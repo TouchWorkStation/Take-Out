@@ -54,7 +54,7 @@ Takeout gives whoever pairs with it a shell as you, so it's built to stay privat
 - **Same-origin only.** Input, resize, and theme requests from any other site are refused. Theme switching only accepts names Omarchy itself lists, passed without a shell. Keys are sent to tmux from a fixed list.
 - **Zero npm dependencies.** Nothing to audit but this repo.
 
-Override the bind address with `TAKEOUT_HOST` and the port with `TAKEOUT_PORT` (default `7777`). Don't expose it to the open internet.
+Prefer your home network over Tailscale? Run `takeout host lan` (and `takeout host` to switch back). You can also set `TAKEOUT_HOST` and the port with `TAKEOUT_PORT` (default `7777`). Don't expose it to the open internet.
 
 ## How it works
 

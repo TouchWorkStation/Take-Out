@@ -22,6 +22,8 @@ usage() {
   takeout status     Is it running?
   takeout restart    Restart the server (your tmux session keeps running)
   takeout attach     Open the same session here at your desk
+  takeout host lan   Listen on your home network instead of Tailscale
+  takeout host       Back to Tailscale (the default)
   takeout reset      New pairing token — unpairs every device
 EOF
 }
@@ -45,6 +47,10 @@ case "${1:-}" in
     base="${url%%/pair*}"
     if curl -fsS -o /dev/null --max-time 2 "$base/manifest.webmanifest"; then
       echo "🥡 Takeout is running at $base"
+      if [[ $base == *127.0.0.1* ]]; then
+        echo "   That's this computer only — your phone can't reach it yet."
+        echo "   Connect Tailscale (Takeout switches over by itself), or run:  takeout host lan"
+      fi
     else
       echo "Takeout isn't answering at $base"
       is_plugin && echo "  Check it's enabled:  omarchy plugin list"
@@ -61,6 +67,37 @@ case "${1:-}" in
     echo "Takeout restarted."
     ;;
   attach) exec tmux new-session -A -s takeout ;;
+  host)
+    file="${XDG_CONFIG_HOME:-$HOME/.config}/takeout/host"
+    mkdir -p "$(dirname "$file")"
+    case "${2:-}" in
+      ""|tailscale|auto)
+        rm -f "$file"
+        if ip=$(tailscale ip -4 2>/dev/null | head -1) && [[ -n $ip ]]; then
+          echo "Takeout will use your Tailscale address: $ip"
+        else
+          echo "Takeout will use Tailscale, but Tailscale isn't connected on this computer yet."
+          echo "  Connect it:  sudo systemctl enable --now tailscaled && sudo tailscale up"
+          echo "  Takeout switches over by itself once it's up."
+        fi
+        ;;
+      lan)
+        ip=$(ip -4 route get 1.1.1.1 2>/dev/null | sed -n 's/.* src \([0-9.]*\).*/\1/p')
+        [[ -n $ip ]] || { echo "Couldn't find this computer's network address." >&2; exit 1; }
+        echo "$ip" >"$file"
+        echo "Takeout will listen on your home network at $ip."
+        echo "  Anyone on this Wi-Fi can reach the page, but they still need your pairing token."
+        echo "  Note: this address can change when your router hands out a new one."
+        ;;
+      *)
+        echo "$2" >"$file"
+        echo "Takeout will listen on $2."
+        ;;
+    esac
+    "$0" restart >/dev/null
+    sleep 2
+    "$0" pair
+    ;;
   reset)
     rm -f "${XDG_CONFIG_HOME:-$HOME/.config}/takeout/token"
     "$0" restart >/dev/null
