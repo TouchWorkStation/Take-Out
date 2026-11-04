@@ -11,18 +11,19 @@ No cloud. No account. No app store. It's an Omarchy plugin that runs on your mac
 ## Install
 
 ```bash
-omarchy plugin add https://github.com/TouchWorkStation/Take-Out --enable
+curl -fsSL https://raw.githubusercontent.com/TouchWorkStation/Take-Out/main/install.sh | bash
 ```
 
-Then, in any terminal:
+That one line installs Node if you need it, adds Takeout as an Omarchy plugin, and prints a link to pair your phone. Open it on your phone, then **Share → Add to Home Screen**. Run the same line again anytime to update.
+
+Prefer doing it by hand?
 
 ```bash
+omarchy plugin add https://github.com/TouchWorkStation/Take-Out --enable
 takeout pair
 ```
 
-Scan the QR code (or open the link) on your phone, then **Share → Add to Home Screen**.
-
-**Needs:** Omarchy (tmux and mise ship with it), Node.js (`omarchy install dev-env node`), and [Tailscale](https://tailscale.com) on your machine and your phone.
+**Needs:** Omarchy (tmux and mise ship with it), Node.js (the installer handles it), and [Tailscale](https://tailscale.com) on your computer and your phone.
 
 ## What it does
 
@@ -61,11 +62,7 @@ Override the bind address with `TAKEOUT_HOST` and the port with `TAKEOUT_PORT` (
 - **Theme:** read from `~/.local/state/omarchy/current/theme` through Omarchy's own `omarchy-theme-color` resolver, so it matches your desktop exactly. Switching from the phone runs `omarchy-theme-set`.
 - **Plugin:** `Service.qml` keeps the server running inside the Omarchy shell and restarts it if it stops.
 
-Not on Omarchy's plugin system? There's a standalone installer that sets up a systemd user service instead:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/TouchWorkStation/Take-Out/main/install.sh | bash
-```
+Not on Omarchy? The same install line sets up a systemd user service instead.
 
 ## Trade-off
 
