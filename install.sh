@@ -45,6 +45,12 @@ pair() {
     sleep 0.5
   done
   if bash "$cli" status >/dev/null 2>&1; then
+    # Omarchy's firewall blocks incoming connections; let the home network through.
+    if command -v ufw >/dev/null 2>&1; then
+      if [[ $TTY != /dev/null ]]; then bash "$cli" firewall <"$TTY" || true
+      else say "Omarchy's firewall will block your phone. Run:  takeout firewall"
+      fi
+    fi
     say "Takeout is running. Pair your phone:"
     bash "$cli" pair
   else

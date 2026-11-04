@@ -44,6 +44,7 @@ takeout pair       Pairing link + QR code for your phone
 takeout status     Is it running?
 takeout attach     Open the same session at your desk
 takeout vpn        Reach Takeout away from home (sets up Tailscale)
+takeout firewall   Let your phone through Omarchy's firewall (home network only)
 takeout restart    Restart the server (your session keeps running)
 takeout reset      New pairing token: unpairs every device
 ```
@@ -52,7 +53,7 @@ takeout reset      New pairing token: unpairs every device
 
 Takeout gives whoever pairs with it a shell as you, so it's built to stay private:
 
-- **It stays on your own networks.** Takeout listens on your computer's network connections (your home Wi-Fi, plus Tailscale if you add it). It's never published to the internet, and your router doesn't forward it anywhere.
+- **It stays on your own networks.** Takeout listens on your computer's network connections (your home Wi-Fi, plus Tailscale if you add it). It's never published to the internet. Omarchy's firewall blocks incoming connections, so the installer opens Takeout's port to private home-network addresses only (and Tailscale, if you use it), never to the internet.
 - **Pairing token.** A random token in `~/.config/takeout/token` (mode 600). Pairing sets an HttpOnly, SameSite=Strict cookie, and `takeout reset` revokes every device at once.
 - **Same-origin only.** Input, resize, and theme requests from any other site are refused. Theme switching only accepts names Omarchy itself lists, passed without a shell. Keys are sent to tmux from a fixed list.
 - **Zero npm dependencies.** Nothing to audit but this repo.

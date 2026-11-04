@@ -22,6 +22,7 @@ usage() {
   takeout status     Is it running?
   takeout attach     Open the same session here at your desk
   takeout vpn        Reach Takeout away from home (sets up Tailscale)
+  takeout firewall   Let your phone through Omarchy's firewall (home network only)
   takeout restart    Restart the server (your session keeps running)
   takeout reset      New pairing token — unpairs every device
 EOF
@@ -77,10 +78,26 @@ case "${1:-}" in
       echo "Sign in to Tailscale (a link will open, or copy it into a browser):"
       sudo tailscale up
     fi
+    "$0" firewall
     echo
     echo "✓ Tailscale is connected. Install the Tailscale app on your phone and sign in"
     echo "  with the same account. Then use this link from anywhere:"
     "$0" pair
+    ;;
+  firewall)
+    # Omarchy's firewall (ufw) denies all incoming connections, so the phone
+    # would be refused. Open Takeout's port to private networks only — home
+    # Wi-Fi ranges, plus the Tailscale interface — never to the internet.
+    command -v ufw >/dev/null 2>&1 || { echo "No firewall (ufw) found — nothing to open."; exit 0; }
+    port=$(pair_url); port=${port#http://*:}; port=${port%%/*}
+    echo "🥡 Opening port $port to your home network only (needs your password)…"
+    for net in 192.168.0.0/16 10.0.0.0/8 172.16.0.0/12; do
+      sudo ufw allow from "$net" to any port "$port" proto tcp comment 'takeout (home network)' >/dev/null
+    done
+    if ip link show tailscale0 >/dev/null 2>&1 || command -v tailscale >/dev/null 2>&1; then
+      sudo ufw allow in on tailscale0 to any port "$port" proto tcp comment 'takeout (tailscale)' >/dev/null
+    fi
+    echo "✓ Your phone can reach Takeout now. The internet still can't."
     ;;
   restart)
     if [[ -f $UNIT ]]; then
