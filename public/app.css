@@ -1,4 +1,4 @@
-/* Every color here is a variable fed by your live Omarchy theme. */
+/* TouchWorkstation's Omarchy terminal, with every color fed by the live Omarchy theme. */
 :root {
   --bg: #1e1e2e;
   --bg-2: #181825;
@@ -6,237 +6,165 @@
   --fg: #cdd6f4;
   --muted: #6c7086;
   --accent: #89b4fa;
-  --red: #f38ba8;
   --green: #a6e3a1;
-  --yellow: #f9e2af;
-  --font: "JetBrainsMono Nerd Font", "JetBrains Mono", ui-monospace, Menlo, monospace;
+  --red: #f38ba8;
+  --c0: #45475a; --c1: #f38ba8; --c2: #a6e3a1; --c3: #f9e2af; --c4: #89b4fa; --c5: #f5c2e7; --c6: #94e2d5; --c7: #bac2de;
+  --c8: #585b70; --c9: #f38ba8; --c10: #a6e3a1; --c11: #f9e2af; --c12: #89b4fa; --c13: #f5c2e7; --c14: #94e2d5; --c15: #a6adc8;
+  --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --tw-vvh: 100dvh;
+  --tw-vv-top: 0px;
   --ease: cubic-bezier(.2, .8, .2, 1);
   color-scheme: dark;
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); overflow: hidden; overscroll-behavior: none; }
+body { font-family: var(--mono); transition: background-color .5s var(--ease); }
+button { cursor: pointer; }
 
-html, body {
-  margin: 0;
-  height: 100%;
-  background: var(--bg);
-  color: var(--fg);
-  font-family: var(--font);
-  overflow: hidden;
-  overscroll-behavior: none;
-  transition: background-color .6s var(--ease), color .6s var(--ease);
-}
-
-body {
+/* iOS never shrinks the layout viewport for the keyboard; pin to the visual viewport (from TW). */
+.mt-root {
+  position: fixed;
+  left: 0; right: 0;
+  top: var(--tw-vv-top);
+  height: var(--tw-vvh);
   display: flex;
   flex-direction: column;
-  height: 100dvh;
-  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  overflow: hidden;
+  background: var(--bg);
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left);
+  transition: background-color .5s var(--ease);
 }
 
-/* The theme's wallpaper, barely there — just enough to feel like your desktop. */
 #wall {
-  position: fixed;
-  inset: 0;
-  background-size: cover;
-  background-position: center;
-  opacity: .07;
-  filter: blur(18px) saturate(1.2);
-  transform: scale(1.1);
+  position: absolute; inset: 0;
+  background-size: cover; background-position: center;
+  opacity: .06; filter: blur(16px) saturate(1.2); transform: scale(1.1);
   pointer-events: none;
-  transition: opacity .8s var(--ease);
-  z-index: 0;
 }
+.mt-top, .mt-pane-wrap, .mt-prompt-row, .mt-keys, .mt-auth, .mt-paste-fallback { position: relative; z-index: 1; }
 
-header, main, nav { position: relative; z-index: 1; }
-
-#bar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 14px 8px;
-  font-size: 13px;
-}
-
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-weight: 700;
-  letter-spacing: .02em;
-}
-
-/* A little takeout box drawn in the accent color. */
-.box {
-  width: 14px;
-  height: 12px;
-  border: 2px solid var(--accent);
-  border-top-width: 3px;
-  border-radius: 1px 1px 3px 3px;
-  clip-path: polygon(0 0, 100% 0, 88% 100%, 12% 100%);
-  transition: border-color .6s var(--ease);
-}
-
-.theme-chip {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  max-width: 60vw;
-  padding: 6px 12px;
-  border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--fg) 14%, transparent);
-  background: color-mix(in srgb, var(--bg-3) 70%, transparent);
-  color: var(--fg);
-  font: inherit;
-  font-size: 12px;
-  cursor: pointer;
-  transition: background-color .6s var(--ease), border-color .6s var(--ease);
-}
-.theme-chip span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.theme-chip .dot {
-  width: 9px; height: 9px; border-radius: 50%;
-  background: var(--accent);
-  box-shadow: 0 0 10px var(--accent);
-  flex: none;
-}
-
-.status {
-  width: 8px; height: 8px; border-radius: 50%;
-  background: var(--muted);
-  flex: none;
-  transition: background-color .3s;
-}
-.status.on { background: var(--green); }
-.status.off { background: var(--red); animation: pulse 1.2s infinite; }
+.mt-top { display: flex; align-items: center; gap: 9px; padding: 10px 16px 4px; flex: none; font-size: 12px; }
+.mt-brand { color: var(--muted); letter-spacing: .04em; }
+.mt-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); flex: none; transition: background-color .3s; }
+.mt-dot.live { background: var(--green); box-shadow: 0 0 8px var(--green); }
+.mt-dot.down { background: var(--red); animation: pulse 1.2s infinite; }
 @keyframes pulse { 50% { opacity: .3; } }
 
-#termWrap {
-  flex: 1;
-  min-height: 0;
-  padding: 2px 6px 6px 10px;
+.mt-chip {
+  margin-left: auto; display: flex; align-items: center; gap: 7px; max-width: 58vw;
+  padding: 5px 11px; border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--fg) 14%, transparent);
+  background: color-mix(in srgb, var(--bg-3) 60%, transparent);
+  color: var(--fg); font: 11.5px var(--mono);
 }
-#term { height: 100%; }
-.xterm .xterm-viewport { background: transparent !important; scrollbar-width: none; }
-.xterm .xterm-viewport::-webkit-scrollbar { display: none; }
-.xterm-screen canvas { transition: opacity .25s; }
+.mt-chip span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mt-chip .sw { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 8px var(--accent); flex: none; }
 
-/* Keys you can't type on a phone keyboard. Scrolls sideways; thumbs love it. */
-#keys {
-  display: flex;
-  gap: 6px;
-  padding: 8px 10px 10px;
-  overflow-x: auto;
-  scrollbar-width: none;
-  border-top: 1px solid color-mix(in srgb, var(--fg) 8%, transparent);
-  background: color-mix(in srgb, var(--bg-2) 85%, transparent);
-  transition: background-color .6s var(--ease);
+.mt-pane-wrap { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.mt-pane {
+  flex: 1; min-height: 0; margin: 0;
+  padding: 10px 16px 8px;
+  overflow-y: auto; -webkit-overflow-scrolling: touch;
+  font: 13px/1.55 var(--mono); color: var(--fg);
+  white-space: pre-wrap; word-break: break-word;
+  user-select: text; -webkit-user-select: text;
 }
-#keys::-webkit-scrollbar { display: none; }
-#keys button {
-  flex: none;
-  min-width: 44px;
-  height: 38px;
-  padding: 0 12px;
-  border-radius: 9px;
-  border: 1px solid color-mix(in srgb, var(--fg) 10%, transparent);
-  background: var(--bg-3);
-  color: var(--fg);
-  font: inherit;
-  font-size: 14px;
-  touch-action: manipulation;
-  transition: background-color .15s, transform .08s, color .15s;
-}
-#keys button:active { transform: scale(.94); background: color-mix(in srgb, var(--accent) 35%, var(--bg-3)); }
-#keys button.mod.armed { background: var(--accent); color: var(--bg); border-color: var(--accent); }
-#keys button.danger { color: var(--red); }
+.mt-pane > div { min-height: 1.55em; }
 
-/* Theme picker: a bottom sheet. */
+.mt-prompt-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 6px 16px 10px; flex: none;
+  border-top: 1px solid color-mix(in srgb, var(--fg) 9%, transparent);
+}
+.mt-caret { color: var(--green); font-size: 15px; font-weight: 700; flex: none; }
+.mt-prompt-row input {
+  flex: 1; border: 0; background: transparent; outline: none;
+  color: var(--fg); font: 13.5px/1.4 var(--mono); padding: 4px 0;
+  -webkit-appearance: none; caret-color: var(--accent);
+}
+.mt-prompt-row input::placeholder { color: var(--muted); }
+
+.mt-keys {
+  display: flex; gap: 2px; flex: none;
+  padding: 0 12px calc(env(safe-area-inset-bottom) + 10px);
+  overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none;
+  border-top: 1px solid color-mix(in srgb, var(--fg) 9%, transparent);
+}
+.mt-keys::-webkit-scrollbar { display: none; }
+.mt-keys button {
+  flex: none; border: 0; background: transparent;
+  color: var(--muted); font: 11px/1 var(--mono);
+  padding: 9px 11px; text-transform: lowercase; touch-action: manipulation;
+}
+.mt-keys button:active { color: var(--green); }
+
+.mt-jump {
+  position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); z-index: 2;
+  display: flex; align-items: center; gap: 6px;
+  border: 1px solid color-mix(in srgb, var(--green) 40%, transparent);
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  color: var(--green); font: 11.5px var(--mono);
+  padding: 7px 14px; border-radius: 999px; box-shadow: 0 6px 18px rgba(0, 0, 0, .4);
+}
+.mt-jump[hidden] { display: none; }
+
+.mt-auth, .mt-paste-fallback {
+  display: flex; align-items: center; gap: 8px; padding: 8px 16px; flex: none;
+  font: 12px var(--mono);
+}
+.mt-auth { background: color-mix(in srgb, var(--green) 10%, transparent); border-top: 1px solid color-mix(in srgb, var(--green) 30%, transparent); }
+.mt-paste-fallback { background: var(--bg-2); border-top: 1px solid color-mix(in srgb, var(--fg) 10%, transparent); }
+.mt-auth[hidden], .mt-paste-fallback[hidden] { display: none; }
+.mt-auth button, .mt-paste-fallback button { border: 0; background: transparent; color: var(--green); font: inherit; padding: 4px 6px; }
+.mt-paste-fallback input { flex: 1; border: 0; background: transparent; outline: none; color: var(--fg); font: 12.5px var(--mono); }
+
+/* Theme picker */
 dialog#sheet {
-  position: fixed;
-  inset: auto 0 0 0;
-  width: 100%;
-  max-width: 560px;
-  max-height: 78dvh;
-  margin: 0 auto;
-  padding: 18px 16px calc(16px + env(safe-area-inset-bottom));
-  border: none;
-  border-radius: 20px 20px 0 0;
-  background: var(--bg-2);
-  color: var(--fg);
-  font-family: var(--font);
+  position: fixed; inset: auto 0 0 0;
+  width: 100%; max-width: 560px; max-height: 80dvh; margin: 0 auto;
+  padding: 18px 16px calc(14px + env(safe-area-inset-bottom));
+  border: none; border-radius: 18px 18px 0 0;
+  background: var(--bg-2); color: var(--fg); font-family: var(--mono);
   box-shadow: 0 -20px 60px rgba(0, 0, 0, .45);
-  overflow: hidden;
-  display: none;
-  flex-direction: column;
+  display: none; flex-direction: column; overflow: hidden;
 }
-dialog#sheet[open] { display: flex; animation: rise .32s var(--ease); }
-dialog#sheet::backdrop { background: rgba(0, 0, 0, .45); backdrop-filter: blur(2px); }
+dialog#sheet[open] { display: flex; animation: rise .3s var(--ease); }
+dialog#sheet::backdrop { background: rgba(0, 0, 0, .45); }
 @keyframes rise { from { transform: translateY(40px); opacity: 0; } }
-
-.sheet-head { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 14px; }
-.sheet-title { font-size: 17px; font-weight: 700; }
-.sheet-sub { font-size: 12px; color: var(--muted); margin-top: 3px; }
-.close { background: none; border: none; color: var(--muted); font-size: 18px; padding: 4px 6px; }
-
-.theme-list {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-  overflow-y: auto;
-  padding-bottom: 6px;
-}
+.sheet-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px; }
+.sheet-title { font-size: 16px; font-weight: 700; }
+.sheet-sub { font-size: 11.5px; color: var(--muted); margin-top: 3px; }
+.close { background: none; border: none; color: var(--muted); font-size: 17px; padding: 4px 6px; }
+.theme-list { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; overflow-y: auto; padding: 3px 3px 8px; }
 .theme-card {
-  position: relative;
-  text-align: left;
-  border-radius: 12px;
-  padding: 12px;
-  min-height: 74px;
-  border: 1px solid rgba(127, 127, 127, .25);
-  font: inherit;
-  font-size: 13px;
-  cursor: pointer;
-  transition: transform .12s var(--ease), outline-color .2s;
-  outline: 2px solid transparent;
-  outline-offset: 2px;
+  position: relative; text-align: left; border-radius: 11px; padding: 12px; min-height: 70px;
+  border: 1px solid rgba(127, 127, 127, .25); font: 12.5px var(--mono);
+  outline: 2px solid transparent; outline-offset: 2px; transition: transform .12s var(--ease);
 }
 .theme-card:active { transform: scale(.97); }
 .theme-card.current { outline-color: var(--accent); }
-.theme-card .name { font-weight: 600; display: block; margin-bottom: 10px; }
+.theme-card .name { display: block; font-weight: 600; margin-bottom: 10px; }
 .theme-card .dots { display: flex; gap: 5px; }
-.theme-card .dots i { width: 10px; height: 10px; border-radius: 50%; display: block; }
+.theme-card .dots i { display: block; width: 10px; height: 10px; border-radius: 50%; }
 .theme-card.busy::after {
-  content: "";
-  position: absolute;
-  top: 12px; right: 12px;
-  width: 12px; height: 12px;
-  border-radius: 50%;
-  border: 2px solid currentColor;
-  border-right-color: transparent;
-  animation: spin .7s linear infinite;
+  content: ""; position: absolute; top: 12px; right: 12px; width: 11px; height: 11px;
+  border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; animation: spin .7s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
-.empty { grid-column: 1 / -1; color: var(--muted); font-size: 13px; line-height: 1.5; padding: 8px 2px; }
+.empty { grid-column: 1 / -1; color: var(--muted); font-size: 12.5px; line-height: 1.5; }
+.sheet-action {
+  margin-top: 10px; flex: none; padding: 11px; border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--fg) 12%, transparent);
+  background: transparent; color: var(--muted); font: 12px var(--mono);
+}
 
 #toast {
-  position: fixed;
-  left: 50%;
-  top: calc(56px + env(safe-area-inset-top));
-  transform: translate(-50%, -10px);
-  padding: 8px 14px;
-  border-radius: 999px;
-  background: var(--accent);
-  color: var(--bg);
-  font-size: 12px;
-  font-weight: 600;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity .25s, transform .25s var(--ease);
-  z-index: 10;
-  white-space: nowrap;
+  position: fixed; left: 50%; top: calc(48px + env(safe-area-inset-top)); z-index: 10;
+  transform: translate(-50%, -8px); opacity: 0; pointer-events: none; white-space: nowrap;
+  padding: 7px 13px; border-radius: 999px; background: var(--accent); color: var(--bg);
+  font: 600 11.5px var(--mono); transition: opacity .25s, transform .25s var(--ease);
 }
 #toast.show { opacity: 1; transform: translate(-50%, 0); }
 
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation: none !important; transition: none !important; }
-}
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }

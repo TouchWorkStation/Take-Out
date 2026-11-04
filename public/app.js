@@ -1,98 +1,161 @@
+// Takeout — TouchWorkstation's minimal Omarchy terminal (MinimalTerminalPTY),
+// ported to plain JS, with the live Omarchy theme driving every color.
 (() => {
   'use strict';
 
   const $ = (s) => document.querySelector(s);
   const pretty = (s) => String(s || '').replace(/(^|-)([a-z])/g, (_, a, b) => a + b.toUpperCase()).replace(/-/g, ' ');
   const slug = (s) => String(s || '').toLowerCase().replace(/\s+/g, '-');
-  const wsURL = (p) => (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + p;
+  const post = (url, body) => fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
 
-  // ---------- terminal ----------
-  const term = new Terminal({
-    cursorBlink: true,
-    allowTransparency: true,
-    fontSize: window.innerWidth < 500 ? 12 : 14,
-    lineHeight: 1.15,
-    scrollback: 5000,
-    fontFamily: getComputedStyle(document.documentElement).getPropertyValue('--font'),
-  });
-  const fit = new FitAddon.FitAddon();
-  term.loadAddon(fit);
-  term.open($('#term'));
+  const pane = $('#pane');
+  const input = $('#input');
+  const dot = $('#status');
+  const caret = $('#caret');
 
-  let sock = null;
-  let retry = 0;
-  const status = $('#status');
+  // ---------- pane rendering ----------
+  // Lines render individually and only from the first changed line onward,
+  // with each line's starting style cached, so a new line of output doesn't
+  // re-render 3000 lines of scrollback.
+  let text = '';
+  let lines = [];          // current raw lines
+  let startStates = [];    // style at the start of each line
+  let autoScroll = true;
 
-  function sendInput(d) {
-    if (sock && sock.readyState === 1) sock.send(JSON.stringify({ t: 'i', d }));
-  }
-  function sendSize() {
-    if (sock && sock.readyState === 1) sock.send(JSON.stringify({ t: 'r', c: term.cols, r: term.rows }));
-  }
+  function render(next) {
+    const nextLines = next.replace(/\n+$/, '').split('\n');
+    // Trailing blank rows below the cursor just push output away from the prompt.
+    while (nextLines.length > 1 && !nextLines[nextLines.length - 1].replace(/\x1b\[[0-9;:]*m/g, '').trim()) nextLines.pop();
 
-  function connectTerm() {
-    if (sock && sock.readyState <= 1) return;
-    try { fit.fit(); } catch {}
-    sock = new WebSocket(wsURL(`/ws/term?cols=${term.cols}&rows=${term.rows}`));
-    sock.onopen = () => {
-      retry = 0;
-      status.className = 'status on';
-      term.reset(); // server replays scrollback so you land exactly where you left off
-    };
-    sock.onmessage = (e) => term.write(e.data);
-    sock.onclose = () => {
-      status.className = 'status off';
-      setTimeout(connectTerm, Math.min(8000, 400 * 2 ** retry++));
-    };
-  }
+    let i = 0;
+    const n = Math.min(lines.length, nextLines.length);
+    while (i < n && lines[i] === nextLines[i]) i++;
 
-  // ---------- modifiers from the key bar ----------
-  const mods = { ctrl: false, alt: false };
-  function setMod(k, on) {
-    mods[k] = on;
-    document.querySelector(`[data-k="${k}"]`).classList.toggle('armed', on);
-  }
-  function applyMods(d) {
-    if (mods.ctrl && d.length === 1) {
-      const c = d.toUpperCase().charCodeAt(0);
-      if (c >= 64 && c <= 95) d = String.fromCharCode(c - 64);
-      else if (d === ' ') d = '\x00';
+    const rows = pane.children;
+    while (rows.length > i) pane.lastChild.remove();
+    let st = i ? startStates[i] || Ansi.blank() : Ansi.blank();
+    const frag = document.createDocumentFragment();
+    for (let j = i; j < nextLines.length; j++) {
+      startStates[j] = st;
+      const el = document.createElement('div');
+      st = Ansi.renderLine(el, nextLines[j], st);
+      frag.appendChild(el);
     }
-    if (mods.alt) d = '\x1b' + d;
-    if (mods.ctrl) setMod('ctrl', false);
-    if (mods.alt) setMod('alt', false);
-    return d;
+    startStates.length = nextLines.length;
+    pane.appendChild(frag);
+    lines = nextLines;
+    if (autoScroll) pane.scrollTop = pane.scrollHeight;
   }
 
-  term.onData((d) => sendInput(applyMods(d)));
+  function onScroll() {
+    autoScroll = pane.scrollHeight - pane.scrollTop - pane.clientHeight < 60;
+    $('#jump').hidden = autoScroll;
+  }
+  pane.addEventListener('scroll', onScroll, { passive: true });
+  $('#jump').addEventListener('click', () => { autoScroll = true; $('#jump').hidden = true; pane.scrollTop = pane.scrollHeight; });
 
-  const SEQ = { esc: '\x1b', tab: '\t', up: '\x1b[A', down: '\x1b[B', right: '\x1b[C', left: '\x1b[D', ctrlc: '\x03' };
+  // ---------- sign-in link detection (from TW) ----------
+  // Claude Code, Codex and gh print a sign-in URL; surface it as a tap.
+  let authUrl = null;
+  function detectLinks(added) {
+    const plain = added.replace(/\x1b\[[0-9;:?]*[A-Za-z]/g, '').replace(/\x1b\][^\x07\x1b]*(\x07|\x1b\\)/g, '');
+    const joined = plain.replace(/[\r\n]+/g, '');
+    const m = joined.match(/https?:\/\/[^\s'"]*(?:oauth|authorize|login|callback|setup|device)[^\s'"]*\?[^\s'"]+/i);
+    if (m && /client_id=|code=|token=|user_code=/i.test(m[0]) && m[0] !== authUrl) {
+      authUrl = m[0];
+      $('#auth').hidden = false;
+    }
+  }
+  $('#authOpen').addEventListener('click', () => authUrl && window.open(authUrl, '_blank', 'noopener'));
+  $('#authClose').addEventListener('click', () => { $('#auth').hidden = true; });
 
-  $('#keys').addEventListener('pointerdown', (e) => e.preventDefault()); // keep the phone keyboard open
-  $('#keys').addEventListener('click', async (e) => {
+  // ---------- input ----------
+  async function sendInput(body) {
+    const r = await post('/api/input', body).catch(() => null);
+    if (!r || !r.ok) toast('not connected');
+  }
+  // Blank Enter is valid and common (dismissing a prompt, paging less) — never swallow it.
+  $('#promptRow').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const t = input.value;
+    input.value = '';
+    autoScroll = true;
+    sendInput({ text: t, key: 'Enter' });
+  });
+
+  $('#keys').addEventListener('pointerdown', (e) => e.preventDefault()); // keep the phone keyboard up
+  $('#keys').addEventListener('click', (e) => {
     const b = e.target.closest('button');
     if (!b) return;
-    const k = b.dataset.k;
-    if (k === 'ctrl' || k === 'alt') { setMod(k, !mods[k]); return term.focus(); }
-    if (k === 'paste') {
-      let text = null;
-      try { text = await navigator.clipboard.readText(); } catch {}
-      if (text == null) text = prompt('Paste into terminal');
-      if (text) sendInput(text);
-    } else if (SEQ[k]) {
-      sendInput(k === 'ctrlc' ? SEQ[k] : applyMods(SEQ[k]));
-    } else if (b.dataset.s) {
-      sendInput(applyMods(b.dataset.s));
-    }
-    term.focus();
+    if (b.dataset.a === 'paste') return paste();
+    // Anything typed but not yet sent goes first, then the key (so `cd sr` + tab completes).
+    const pending = input.value;
+    input.value = '';
+    sendInput({ text: pending, key: b.dataset.k });
+    input.focus();
   });
 
-  const refit = () => { try { fit.fit(); sendSize(); } catch {} };
-  new ResizeObserver(refit).observe($('#termWrap'));
-  window.visualViewport && window.visualViewport.addEventListener('resize', refit);
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) { connectTerm(); connectEvents(); } });
+  async function paste() {
+    if (window.isSecureContext && navigator.clipboard && navigator.clipboard.readText) {
+      try { const t = await navigator.clipboard.readText(); if (t) return sendInput({ text: t }); } catch {}
+    }
+    // Plain http over Tailscale isn't a "secure context", so most phones land here.
+    $('#pasteFallback').hidden = false;
+    $('#pasteText').focus();
+  }
+  function submitPaste() {
+    const t = $('#pasteText').value;
+    if (t) sendInput({ text: t });
+    $('#pasteText').value = '';
+    $('#pasteFallback').hidden = true;
+    input.focus();
+  }
+  $('#pasteSend').addEventListener('click', submitPaste);
+  $('#pasteText').addEventListener('keydown', (e) => { if (e.key === 'Enter') submitPaste(); });
+  $('#pasteCancel').addEventListener('click', () => { $('#pasteText').value = ''; $('#pasteFallback').hidden = true; });
 
-  // ---------- theme sync ----------
+  // ---------- sizing (from TW) ----------
+  // Size tmux to the real phone width so Claude Code / Codex wrap to fit
+  // instead of rendering ~120 columns wide and running off-screen.
+  let lastSize = '';
+  function measure() {
+    let cols = 80, rows = 24;
+    try {
+      const probe = document.createElement('span');
+      probe.textContent = '0'.repeat(50);
+      probe.style.cssText = 'position:absolute;visibility:hidden;white-space:pre;left:-9999px';
+      pane.appendChild(probe);
+      const cw = probe.getBoundingClientRect().width / 50;
+      probe.remove();
+      const cs = getComputedStyle(pane);
+      const lh = parseFloat(cs.lineHeight) || (parseFloat(cs.fontSize) || 13) * 1.55;
+      const w = pane.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+      if (cw > 0) cols = Math.max(20, Math.min(220, Math.floor(w / cw)));
+      if (lh > 0) rows = Math.max(6, Math.min(80, Math.floor(pane.clientHeight / lh)));
+    } catch {}
+    const key = `${cols}x${rows}`;
+    if (key === lastSize) return;
+    lastSize = key;
+    post('/api/resize', { cols, rows }).catch(() => { lastSize = ''; });
+  }
+
+  // iOS: track the visual viewport so the keyboard never leaves a dead gap (from TW).
+  function setVVH() {
+    const vv = window.visualViewport;
+    document.documentElement.style.setProperty('--tw-vvh', `${vv ? vv.height : window.innerHeight}px`);
+    document.documentElement.style.setProperty('--tw-vv-top', `${vv ? vv.offsetTop : 0}px`);
+    autoScroll = true;
+    $('#jump').hidden = true;
+    requestAnimationFrame(() => { pane.scrollTop = pane.scrollHeight; measure(); });
+  }
+  setVVH();
+  window.addEventListener('resize', setVVH);
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', setVVH);
+    window.visualViewport.addEventListener('scroll', setVVH);
+  }
+
+  // ---------- theme ----------
   let current = null;
   let pending = null;
   let fontLoaded = null;
@@ -104,9 +167,9 @@
       await face.load();
       document.fonts.add(face);
       fontLoaded = theme.fontFile;
-      document.documentElement.style.setProperty('--font', `"TakeoutMono", "${theme.font}", ui-monospace, monospace`);
-      term.options.fontFamily = `"TakeoutMono", ui-monospace, monospace`;
-      refit();
+      document.documentElement.style.setProperty('--mono', `"TakeoutMono", ui-monospace, SFMono-Regular, Menlo, monospace`);
+      lastSize = '';
+      measure();
     } catch {}
   }
 
@@ -118,31 +181,16 @@
     set('--bg-2', c.dark_background || c.background);
     set('--bg-3', c.lighter_background || c.selection);
     set('--fg', c.foreground);
-    set('--muted', c.muted || c.dark_foreground);
+    set('--muted', c.muted || c.dark_foreground || c.color8);
     set('--accent', c.accent);
-    set('--red', c.red);
     set('--green', c.green);
-    set('--yellow', c.yellow);
+    set('--red', c.red);
+    const ansi = [c.color0 || c.lighter_background || c.background, c.red, c.green, c.yellow, c.blue, c.magenta, c.cyan, c.color7 || c.foreground,
+      c.color8 || c.muted, c.bright_red, c.bright_green, c.bright_yellow, c.bright_blue, c.bright_magenta, c.bright_cyan, c.color15 || c.bright_foreground];
+    ansi.forEach((v, i) => set(`--c${i}`, v));
     document.documentElement.style.colorScheme = c.mode === 'light' ? 'light' : 'dark';
     document.querySelector('meta[name="theme-color"]').setAttribute('content', c.background);
-
-    term.options.theme = {
-      background: '#00000000',
-      foreground: c.foreground,
-      cursor: c.cursor || c.bright_foreground || c.foreground,
-      cursorAccent: c.background,
-      selectionBackground: c.selection || c.selection_background,
-      selectionForeground: c.selection_foreground,
-      black: c.color0 || c.background, red: c.red, green: c.green, yellow: c.yellow,
-      blue: c.blue, magenta: c.magenta, cyan: c.cyan, white: c.color7 || c.foreground,
-      brightBlack: c.color8 || c.muted, brightRed: c.bright_red, brightGreen: c.bright_green,
-      brightYellow: c.bright_yellow, brightBlue: c.bright_blue, brightMagenta: c.bright_magenta,
-      brightCyan: c.bright_cyan, brightWhite: c.color15 || c.bright_foreground,
-    };
-
-    const wall = $('#wall');
-    wall.style.backgroundImage = theme.background ? `url(/api/background?v=${theme.background})` : 'none';
-
+    $('#wall').style.backgroundImage = theme.background ? `url(/api/background?v=${theme.background})` : 'none';
     $('#themeName').textContent = pretty(theme.name);
     loadFont(theme);
 
@@ -153,16 +201,31 @@
     markCurrent();
   }
 
-  let events = null;
-  function connectEvents() {
-    if (events && events.readyState <= 1) return;
-    events = new WebSocket(wsURL('/ws/events'));
-    events.onmessage = (e) => {
-      const m = JSON.parse(e.data);
-      if (m.type === 'theme') applyTheme(m.theme);
+  // ---------- live stream ----------
+  let es = null;
+  function connect() {
+    if (es && es.readyState !== 2) return;
+    es = new EventSource('/api/stream');
+    // Every (re)connect starts the server's diff from empty, so start ours from empty too.
+    es.onopen = () => { text = ''; dot.className = 'mt-dot live'; caret.textContent = '❯'; lastSize = ''; measure(); };
+    es.onerror = () => {
+      dot.className = 'mt-dot down';
+      caret.textContent = '…';
+      if (es.readyState === 2) setTimeout(connect, 1500); // closed for good (e.g. 401): retry ourselves
     };
-    events.onclose = () => setTimeout(connectEvents, 2000);
+    es.addEventListener('theme', (e) => applyTheme(JSON.parse(e.data)));
+    es.addEventListener('pane', (e) => {
+      const d = JSON.parse(e.data);
+      text = text.slice(0, d.keep) + d.add;
+      render(text);
+      detectLinks(d.add.slice(-4000));
+    });
   }
+  // The stream reconnects on its own; a fresh connection starts from an empty diff.
+  const resetPane = () => { text = ''; };
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && (!es || es.readyState === 2)) { resetPane(); connect(); }
+  });
 
   // ---------- theme picker ----------
   const sheet = $('#sheet');
@@ -180,10 +243,9 @@
     sheet.showModal();
     list.innerHTML = '<div class="empty">Loading themes…</div>';
     try {
-      const r = await fetch('/api/themes');
-      const data = await r.json();
+      const data = await (await fetch('/api/themes')).json();
       if (!data.themes.length) {
-        list.innerHTML = '<div class="empty">No Omarchy themes found on this machine. Takeout still follows whatever colors are active.</div>';
+        list.innerHTML = '<div class="empty">No Omarchy themes found. Takeout still follows whatever colors are active.</div>';
         return;
       }
       list.innerHTML = '';
@@ -199,11 +261,7 @@
         name.textContent = t.name;
         const dots = document.createElement('span');
         dots.className = 'dots';
-        for (const col of (s.dots || [])) {
-          const i = document.createElement('i');
-          i.style.background = col;
-          dots.appendChild(i);
-        }
+        for (const col of s.dots || []) { const i = document.createElement('i'); i.style.background = col; dots.appendChild(i); }
         b.append(name, dots);
         list.appendChild(b);
       }
@@ -219,29 +277,28 @@
     if (!card || card.classList.contains('current')) return;
     pending = card.dataset.name;
     card.classList.add('busy');
-    const r = await fetch('/api/theme/set', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: card.dataset.name }),
-    }).catch(() => null);
+    const r = await post('/api/theme/set', { name: card.dataset.name }).catch(() => null);
     if (!r || !r.ok) { pending = null; card.classList.remove('busy'); toast('couldn’t switch theme'); }
   });
-
   $('#themeBtn').addEventListener('click', openSheet);
   $('#closeSheet').addEventListener('click', closeSheet);
   sheet.addEventListener('click', (e) => { if (e.target === sheet) closeSheet(); });
+  $('#newSession').addEventListener('click', async () => {
+    if (!confirm('End the current terminal session and start a fresh one?')) return;
+    closeSheet();
+    await post('/api/session/new');
+    toast('fresh session');
+  });
 
   // ---------- toast ----------
   let toastTimer;
-  function toast(text) {
+  function toast(msg) {
     const t = $('#toast');
-    t.textContent = text;
+    t.textContent = msg;
     t.classList.add('show');
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => t.classList.remove('show'), 2200);
   }
 
-  connectEvents();
-  connectTerm();
-  term.focus();
+  connect();
 })();

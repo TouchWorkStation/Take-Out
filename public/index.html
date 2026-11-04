@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#1e1e2e">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
@@ -11,38 +11,54 @@
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="/icon.svg">
   <link rel="apple-touch-icon" href="/icon.svg">
-  <link rel="stylesheet" href="/vendor/xterm.css">
   <link rel="stylesheet" href="/app.css">
 </head>
 <body>
-  <div id="wall"></div>
+  <div class="mt-root">
+    <div id="wall"></div>
 
-  <header id="bar">
-    <div class="brand"><span class="box" aria-hidden="true"></span>takeout</div>
-    <button id="themeBtn" class="theme-chip" aria-haspopup="dialog">
-      <span class="dot"></span><span id="themeName">…</span>
-    </button>
-    <span id="status" class="status" title="connection"></span>
-  </header>
+    <header class="mt-top">
+      <span id="status" class="mt-dot" title="connecting"></span>
+      <span class="mt-brand">takeout</span>
+      <button id="themeBtn" class="mt-chip" aria-haspopup="dialog"><span class="sw"></span><span id="themeName">…</span></button>
+    </header>
 
-  <main id="termWrap"><div id="term"></div></main>
+    <div class="mt-pane-wrap">
+      <pre id="pane" class="mt-pane"></pre>
+      <button id="jump" class="mt-jump" hidden aria-label="Jump to latest">↓ latest</button>
+    </div>
 
-  <nav id="keys" aria-label="Terminal keys">
-    <button data-k="esc">esc</button>
-    <button data-k="tab">tab</button>
-    <button data-k="ctrl" class="mod">ctrl</button>
-    <button data-k="alt" class="mod">alt</button>
-    <button data-k="up" aria-label="Up">↑</button>
-    <button data-k="down" aria-label="Down">↓</button>
-    <button data-k="left" aria-label="Left">←</button>
-    <button data-k="right" aria-label="Right">→</button>
-    <button data-s="|">|</button>
-    <button data-s="~">~</button>
-    <button data-s="/">/</button>
-    <button data-s="-">-</button>
-    <button data-k="ctrlc" class="danger">^C</button>
-    <button data-k="paste">paste</button>
-  </nav>
+    <div id="auth" class="mt-auth" hidden>
+      <span>link detected —</span>
+      <button id="authOpen">open on this device</button>
+      <button id="authClose" aria-label="dismiss">✕</button>
+    </div>
+
+    <div id="pasteFallback" class="mt-paste-fallback" hidden>
+      <input id="pasteText" placeholder="long-press, paste, then send" autocomplete="off" autocapitalize="none" spellcheck="false">
+      <button id="pasteSend">send</button>
+      <button id="pasteCancel" aria-label="cancel">✕</button>
+    </div>
+
+    <form id="promptRow" class="mt-prompt-row" autocomplete="off">
+      <span id="caret" class="mt-caret">…</span>
+      <input id="input" placeholder="Type a command…" autocapitalize="none" autocorrect="off" autocomplete="off" spellcheck="false" enterkeyhint="send">
+    </form>
+
+    <div id="keys" class="mt-keys">
+      <button data-a="paste">paste</button>
+      <button data-k="Escape">esc</button>
+      <button data-k="Tab">tab</button>
+      <button data-k="C-c">^c</button>
+      <button data-k="C-d">^d</button>
+      <button data-k="Up" aria-label="Up">↑</button>
+      <button data-k="Down" aria-label="Down">↓</button>
+      <button data-k="Left" aria-label="Left">←</button>
+      <button data-k="Right" aria-label="Right">→</button>
+      <button data-k="C-r">^r</button>
+      <button data-k="C-l">^l</button>
+    </div>
+  </div>
 
   <dialog id="sheet">
     <div class="sheet-head">
@@ -53,12 +69,12 @@
       <button class="close" id="closeSheet" aria-label="Close">✕</button>
     </div>
     <div id="themeList" class="theme-list"></div>
+    <button id="newSession" class="sheet-action">Start a fresh terminal session</button>
   </dialog>
 
   <div id="toast" role="status"></div>
 
-  <script src="/vendor/xterm.js"></script>
-  <script src="/vendor/addon-fit.js"></script>
+  <script src="/ansi.js"></script>
   <script src="/app.js"></script>
 </body>
 </html>
