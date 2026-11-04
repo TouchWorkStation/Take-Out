@@ -1,0 +1,242 @@
+/* Every color here is a variable fed by your live Omarchy theme. */
+:root {
+  --bg: #1e1e2e;
+  --bg-2: #181825;
+  --bg-3: #313244;
+  --fg: #cdd6f4;
+  --muted: #6c7086;
+  --accent: #89b4fa;
+  --red: #f38ba8;
+  --green: #a6e3a1;
+  --yellow: #f9e2af;
+  --font: "JetBrainsMono Nerd Font", "JetBrains Mono", ui-monospace, Menlo, monospace;
+  --ease: cubic-bezier(.2, .8, .2, 1);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font);
+  overflow: hidden;
+  overscroll-behavior: none;
+  transition: background-color .6s var(--ease), color .6s var(--ease);
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+/* The theme's wallpaper, barely there — just enough to feel like your desktop. */
+#wall {
+  position: fixed;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  opacity: .07;
+  filter: blur(18px) saturate(1.2);
+  transform: scale(1.1);
+  pointer-events: none;
+  transition: opacity .8s var(--ease);
+  z-index: 0;
+}
+
+header, main, nav { position: relative; z-index: 1; }
+
+#bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px 8px;
+  font-size: 13px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  letter-spacing: .02em;
+}
+
+/* A little takeout box drawn in the accent color. */
+.box {
+  width: 14px;
+  height: 12px;
+  border: 2px solid var(--accent);
+  border-top-width: 3px;
+  border-radius: 1px 1px 3px 3px;
+  clip-path: polygon(0 0, 100% 0, 88% 100%, 12% 100%);
+  transition: border-color .6s var(--ease);
+}
+
+.theme-chip {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 60vw;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--fg) 14%, transparent);
+  background: color-mix(in srgb, var(--bg-3) 70%, transparent);
+  color: var(--fg);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background-color .6s var(--ease), border-color .6s var(--ease);
+}
+.theme-chip span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.theme-chip .dot {
+  width: 9px; height: 9px; border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 10px var(--accent);
+  flex: none;
+}
+
+.status {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--muted);
+  flex: none;
+  transition: background-color .3s;
+}
+.status.on { background: var(--green); }
+.status.off { background: var(--red); animation: pulse 1.2s infinite; }
+@keyframes pulse { 50% { opacity: .3; } }
+
+#termWrap {
+  flex: 1;
+  min-height: 0;
+  padding: 2px 6px 6px 10px;
+}
+#term { height: 100%; }
+.xterm .xterm-viewport { background: transparent !important; scrollbar-width: none; }
+.xterm .xterm-viewport::-webkit-scrollbar { display: none; }
+.xterm-screen canvas { transition: opacity .25s; }
+
+/* Keys you can't type on a phone keyboard. Scrolls sideways; thumbs love it. */
+#keys {
+  display: flex;
+  gap: 6px;
+  padding: 8px 10px 10px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  border-top: 1px solid color-mix(in srgb, var(--fg) 8%, transparent);
+  background: color-mix(in srgb, var(--bg-2) 85%, transparent);
+  transition: background-color .6s var(--ease);
+}
+#keys::-webkit-scrollbar { display: none; }
+#keys button {
+  flex: none;
+  min-width: 44px;
+  height: 38px;
+  padding: 0 12px;
+  border-radius: 9px;
+  border: 1px solid color-mix(in srgb, var(--fg) 10%, transparent);
+  background: var(--bg-3);
+  color: var(--fg);
+  font: inherit;
+  font-size: 14px;
+  touch-action: manipulation;
+  transition: background-color .15s, transform .08s, color .15s;
+}
+#keys button:active { transform: scale(.94); background: color-mix(in srgb, var(--accent) 35%, var(--bg-3)); }
+#keys button.mod.armed { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+#keys button.danger { color: var(--red); }
+
+/* Theme picker: a bottom sheet. */
+dialog#sheet {
+  position: fixed;
+  inset: auto 0 0 0;
+  width: 100%;
+  max-width: 560px;
+  max-height: 78dvh;
+  margin: 0 auto;
+  padding: 18px 16px calc(16px + env(safe-area-inset-bottom));
+  border: none;
+  border-radius: 20px 20px 0 0;
+  background: var(--bg-2);
+  color: var(--fg);
+  font-family: var(--font);
+  box-shadow: 0 -20px 60px rgba(0, 0, 0, .45);
+  overflow: hidden;
+  display: none;
+  flex-direction: column;
+}
+dialog#sheet[open] { display: flex; animation: rise .32s var(--ease); }
+dialog#sheet::backdrop { background: rgba(0, 0, 0, .45); backdrop-filter: blur(2px); }
+@keyframes rise { from { transform: translateY(40px); opacity: 0; } }
+
+.sheet-head { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 14px; }
+.sheet-title { font-size: 17px; font-weight: 700; }
+.sheet-sub { font-size: 12px; color: var(--muted); margin-top: 3px; }
+.close { background: none; border: none; color: var(--muted); font-size: 18px; padding: 4px 6px; }
+
+.theme-list {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  overflow-y: auto;
+  padding-bottom: 6px;
+}
+.theme-card {
+  position: relative;
+  text-align: left;
+  border-radius: 12px;
+  padding: 12px;
+  min-height: 74px;
+  border: 1px solid rgba(127, 127, 127, .25);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition: transform .12s var(--ease), outline-color .2s;
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+}
+.theme-card:active { transform: scale(.97); }
+.theme-card.current { outline-color: var(--accent); }
+.theme-card .name { font-weight: 600; display: block; margin-bottom: 10px; }
+.theme-card .dots { display: flex; gap: 5px; }
+.theme-card .dots i { width: 10px; height: 10px; border-radius: 50%; display: block; }
+.theme-card.busy::after {
+  content: "";
+  position: absolute;
+  top: 12px; right: 12px;
+  width: 12px; height: 12px;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  animation: spin .7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.empty { grid-column: 1 / -1; color: var(--muted); font-size: 13px; line-height: 1.5; padding: 8px 2px; }
+
+#toast {
+  position: fixed;
+  left: 50%;
+  top: calc(56px + env(safe-area-inset-top));
+  transform: translate(-50%, -10px);
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--bg);
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .25s, transform .25s var(--ease);
+  z-index: 10;
+  white-space: nowrap;
+}
+#toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}

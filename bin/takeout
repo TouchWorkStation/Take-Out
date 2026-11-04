@@ -1,0 +1,69 @@
+#!/bin/bash
+# takeout — your Omarchy terminal, to go.
+
+set -euo pipefail
+
+TAKEOUT_DIR="${TAKEOUT_DIR:-$HOME/.local/share/takeout}"
+SERVICE="takeout.service"
+
+node_bin() {
+  if command -v node >/dev/null 2>&1; then command -v node
+  elif command -v mise >/dev/null 2>&1; then mise which node 2>/dev/null
+  fi
+}
+
+pair_url() {
+  local node
+  node=$(node_bin)
+  "$node" "$TAKEOUT_DIR/server.js" --pair
+}
+
+usage() {
+  cat <<EOF
+🥡 takeout — your Omarchy terminal, to go
+
+  takeout pair       Print the pairing link (and a QR code if qrencode is installed)
+  takeout status     Is it running?
+  takeout restart    Restart the background service
+  takeout logs       Follow the service log
+  takeout serve      Run in the foreground (what the service runs)
+  takeout reset      Make a new pairing token (unpairs every device)
+  takeout uninstall  Remove Takeout
+EOF
+}
+
+case "${1:-}" in
+  pair)
+    url=$(pair_url)
+    echo
+    if command -v qrencode >/dev/null 2>&1; then
+      qrencode -t ansiutf8 -m 2 "$url"
+    else
+      echo "  (install qrencode for a scannable QR code: sudo pacman -S qrencode)"
+    fi
+    echo
+    echo "  Open on your phone: $url"
+    echo "  Then use Share → Add to Home Screen."
+    echo
+    ;;
+  status) systemctl --user --no-pager status "$SERVICE" ;;
+  restart) systemctl --user restart "$SERVICE" && echo "Takeout restarted." ;;
+  logs) journalctl --user -u "$SERVICE" -f ;;
+  serve) exec "$(node_bin)" "$TAKEOUT_DIR/server.js" ;;
+  reset)
+    rm -f "${XDG_CONFIG_HOME:-$HOME/.config}/takeout/token"
+    systemctl --user restart "$SERVICE"
+    echo "New token made. Every device needs to pair again:"
+    "$0" pair
+    ;;
+  uninstall)
+    systemctl --user disable --now "$SERVICE" 2>/dev/null || true
+    rm -f "$HOME/.config/systemd/user/$SERVICE"
+    systemctl --user daemon-reload
+    rm -rf "$TAKEOUT_DIR"
+    rm -f "$HOME/.local/bin/takeout"
+    echo "Takeout removed. Your token is still in ~/.config/takeout — delete it if you like."
+    ;;
+  -v|--version) "$(node_bin)" -e "console.log(require('$TAKEOUT_DIR/package.json').version)" ;;
+  *) usage ;;
+esac

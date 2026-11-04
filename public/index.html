@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+  <meta name="theme-color" content="#1e1e2e">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Takeout</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/icon.svg">
+  <link rel="apple-touch-icon" href="/icon.svg">
+  <link rel="stylesheet" href="/vendor/xterm.css">
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+  <div id="wall"></div>
+
+  <header id="bar">
+    <div class="brand"><span class="box" aria-hidden="true"></span>takeout</div>
+    <button id="themeBtn" class="theme-chip" aria-haspopup="dialog">
+      <span class="dot"></span><span id="themeName">…</span>
+    </button>
+    <span id="status" class="status" title="connection"></span>
+  </header>
+
+  <main id="termWrap"><div id="term"></div></main>
+
+  <nav id="keys" aria-label="Terminal keys">
+    <button data-k="esc">esc</button>
+    <button data-k="tab">tab</button>
+    <button data-k="ctrl" class="mod">ctrl</button>
+    <button data-k="alt" class="mod">alt</button>
+    <button data-k="up" aria-label="Up">↑</button>
+    <button data-k="down" aria-label="Down">↓</button>
+    <button data-k="left" aria-label="Left">←</button>
+    <button data-k="right" aria-label="Right">→</button>
+    <button data-s="|">|</button>
+    <button data-s="~">~</button>
+    <button data-s="/">/</button>
+    <button data-s="-">-</button>
+    <button data-k="ctrlc" class="danger">^C</button>
+    <button data-k="paste">paste</button>
+  </nav>
+
+  <dialog id="sheet">
+    <div class="sheet-head">
+      <div>
+        <div class="sheet-title">Themes</div>
+        <div class="sheet-sub">Tap one — your desktop switches too.</div>
+      </div>
+      <button class="close" id="closeSheet" aria-label="Close">✕</button>
+    </div>
+    <div id="themeList" class="theme-list"></div>
+  </dialog>
+
+  <div id="toast" role="status"></div>
+
+  <script src="/vendor/xterm.js"></script>
+  <script src="/vendor/addon-fit.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>
