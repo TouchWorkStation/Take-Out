@@ -21,5 +21,10 @@
   "engines": {
     "node": ">=18"
   },
-  "author": "Chris Jordan"
+  "author": "Chris Jordan",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/TouchWorkStation/Take-Out.git"
+  },
+  "homepage": "https://github.com/TouchWorkStation/Take-Out"
 }

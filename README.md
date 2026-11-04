@@ -11,7 +11,7 @@ No cloud. No account. No app store. It's an Omarchy plugin that runs on your mac
 ## Install
 
 ```bash
-omarchy plugin add https://github.com/OWNER/takeout --enable
+omarchy plugin add https://github.com/TouchWorkStation/Take-Out --enable
 ```
 
 Then, in any terminal:
@@ -64,7 +64,7 @@ Override the bind address with `TAKEOUT_HOST` and the port with `TAKEOUT_PORT` (
 Not on Omarchy's plugin system? There's a standalone installer that sets up a systemd user service instead:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/OWNER/takeout/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/TouchWorkStation/Take-Out/main/install.sh | bash
 ```
 
 ## Trade-off

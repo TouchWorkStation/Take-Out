@@ -1,11 +1,11 @@
 #!/bin/bash
 # Takeout installer for when you're not using the Omarchy plugin system.
-# On Omarchy, prefer:  omarchy plugin add https://github.com/OWNER/takeout --enable
+# On Omarchy, prefer:  omarchy plugin add https://github.com/TouchWorkStation/Take-Out --enable
 #
-#   curl -fsSL https://raw.githubusercontent.com/OWNER/takeout/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/TouchWorkStation/Take-Out/main/install.sh | bash
 set -euo pipefail
 
-REPO="${TAKEOUT_REPO:-https://github.com/OWNER/takeout.git}"
+REPO="${TAKEOUT_REPO:-https://github.com/TouchWorkStation/Take-Out.git}"
 DIR="$HOME/.local/share/takeout"
 UNIT="$HOME/.config/systemd/user/takeout.service"
 
