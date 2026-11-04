@@ -4,7 +4,7 @@
 
 Takeout puts a real terminal from your Omarchy machine on your phone, and it wears your Omarchy theme. Switch themes on your desktop and your phone follows. Tap a theme on your phone and your desktop switches too.
 
-No cloud. No account. No app store. It's an Omarchy plugin that runs on your machine, and you reach it over Tailscale.
+No cloud. No account. No app store. It's an Omarchy plugin that runs on your machine, and your phone reaches it over your home Wi-Fi. Add a private VPN later to reach it from anywhere.
 
 ![Takeout on a phone](docs/screenshot.png)
 
@@ -23,7 +23,9 @@ omarchy plugin add https://github.com/TouchWorkStation/Take-Out --enable
 takeout pair
 ```
 
-**Needs:** Omarchy (tmux and mise ship with it), Node.js (the installer handles it), and [Tailscale](https://tailscale.com) on your computer and your phone.
+**Needs:** Omarchy (tmux and mise ship with it) and Node.js (the installer handles it). Your phone and computer on the same Wi-Fi.
+
+**Away from home:** run `takeout vpn` (the installer offers it too). It sets up [Tailscale](https://tailscale.com), a free private network between your devices, so your phone reaches Takeout from anywhere, and `takeout pair` shows that link as well.
 
 ## What it does
 
@@ -41,6 +43,7 @@ takeout pair
 takeout pair       Pairing link + QR code for your phone
 takeout status     Is it running?
 takeout attach     Open the same session at your desk
+takeout vpn        Reach Takeout away from home (sets up Tailscale)
 takeout restart    Restart the server (your session keeps running)
 takeout reset      New pairing token: unpairs every device
 ```
@@ -49,12 +52,12 @@ takeout reset      New pairing token: unpairs every device
 
 Takeout gives whoever pairs with it a shell as you, so it's built to stay private:
 
-- **It listens on your Tailscale IP only.** Without Tailscale it falls back to `127.0.0.1`. It never listens on your LAN or the internet by default.
+- **It stays on your own networks.** Takeout listens on your computer's network connections (your home Wi-Fi, plus Tailscale if you add it). It's never published to the internet, and your router doesn't forward it anywhere.
 - **Pairing token.** A random token in `~/.config/takeout/token` (mode 600). Pairing sets an HttpOnly, SameSite=Strict cookie, and `takeout reset` revokes every device at once.
 - **Same-origin only.** Input, resize, and theme requests from any other site are refused. Theme switching only accepts names Omarchy itself lists, passed without a shell. Keys are sent to tmux from a fixed list.
 - **Zero npm dependencies.** Nothing to audit but this repo.
 
-Prefer your home network over Tailscale? Run `takeout host lan` (and `takeout host` to switch back). You can also set `TAKEOUT_HOST` and the port with `TAKEOUT_PORT` (default `7777`). Don't expose it to the open internet.
+To listen on just one address, set `TAKEOUT_HOST` or put the address in `~/.config/takeout/host`. Change the port with `TAKEOUT_PORT` (default `7777`). Don't port-forward Takeout to the open internet; use `takeout vpn` instead.
 
 ## How it works
 

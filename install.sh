@@ -52,14 +52,20 @@ pair() {
   fi
 }
 
-tailscale_tip() {
-  if ! command -v tailscale >/dev/null 2>&1 || ! tailscale ip -4 >/dev/null 2>&1; then
-    echo
-    say "Tailscale isn't up, so Takeout is only reachable from this computer for now."
-    echo "   To reach it from your phone:"
-    echo "     sudo pacman -S tailscale && sudo systemctl enable --now tailscaled && sudo tailscale up"
-    echo "     then:  takeout restart && takeout pair"
-    echo "   (and sign in to the Tailscale app on your phone with the same account)"
+# Works on home Wi-Fi as-is. Offer a VPN for away-from-home, but never require it.
+offer_vpn() {
+  local cli="$1"
+  command -v tailscale >/dev/null 2>&1 && tailscale ip -4 >/dev/null 2>&1 && return 0
+  [[ $TTY == /dev/null ]] && { echo; say "Want Takeout away from home too? Run:  takeout vpn"; return 0; }
+  echo
+  say "That link works on your home Wi-Fi."
+  printf '   Want to reach Takeout from anywhere too? Set up a private VPN (Tailscale) now? [y/N] '
+  local answer=""
+  read -r answer <"$TTY" || true
+  if [[ $answer =~ ^[Yy] ]]; then
+    bash "$cli" vpn <"$TTY"
+  else
+    echo "   No problem. Anytime later:  takeout vpn"
   fi
 }
 
@@ -69,6 +75,7 @@ if command -v omarchy-plugin-add >/dev/null 2>&1; then
     say "Takeout is already installed — updating it…"
     omarchy-plugin-update takeout --yes >/dev/null 2>&1 || git -C "$PLUGIN_DIR" pull --ff-only --quiet || true
     omarchy-plugin-enable takeout >/dev/null 2>&1 || true
+    bash "$PLUGIN_DIR/bin/takeout" restart >/dev/null 2>&1 || true
   else
     say "Installing Takeout as an Omarchy plugin…"
     if [[ $TTY != /dev/null ]]; then
@@ -80,7 +87,7 @@ if command -v omarchy-plugin-add >/dev/null 2>&1; then
     fi
   fi
   pair "$PLUGIN_DIR/bin/takeout"
-  tailscale_tip
+  offer_vpn "$PLUGIN_DIR/bin/takeout"
   exit 0
 fi
 
@@ -109,4 +116,4 @@ EOF
 systemctl --user daemon-reload
 systemctl --user enable --now takeout.service >/dev/null 2>&1 || systemctl --user restart takeout.service
 pair "$SERVICE_DIR/bin/takeout"
-tailscale_tip
+offer_vpn "$SERVICE_DIR/bin/takeout"

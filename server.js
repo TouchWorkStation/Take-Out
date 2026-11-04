@@ -83,25 +83,33 @@ const has = (cmd) => {
   catch { return false; }
 };
 
-// ---------- bind: Tailscale first, never the open internet by default ----------
-// Override with TAKEOUT_HOST, or put an address in ~/.config/takeout/host.
+// ---------- address ----------
+// Takeout listens on every interface of this computer, so your phone reaches
+// it on your home network — and over a VPN like Tailscale too, if you add one
+// later. Every page still needs the pairing token.
+// Override the bind address with TAKEOUT_HOST or ~/.config/takeout/host.
 const HOST_FILE = path.join(CONFIG_DIR, 'host');
-function tailscaleIp() {
-  try {
-    const ip = execFileSync('tailscale', ['ip', '-4'], { timeout: 2000, env: ENV, stdio: ['ignore', 'pipe', 'ignore'] })
-      .toString().trim().split('\n')[0];
-    if (/^\d+\.\d+\.\d+\.\d+$/.test(ip)) return ip;
-  } catch {}
-  return null;
-}
 function configuredHost() {
   if (process.env.TAKEOUT_HOST) return process.env.TAKEOUT_HOST;
   try { const h = fs.readFileSync(HOST_FILE, 'utf8').trim(); if (h) return h; } catch {}
   return null;
 }
-function pickHost() { return configuredHost() || tailscaleIp() || '127.0.0.1'; }
-const HOST = pickHost();
-const PAIR_URL = `http://${HOST}:${PORT}/pair?t=${TOKEN}`;
+const HOST = configuredHost() || '0.0.0.0';
+
+// The address to show: this computer's IP on the network its internet goes through.
+function localIp() {
+  try {
+    const out = execFileSync('ip', ['-4', 'route', 'get', '1.1.1.1'], { timeout: 2000, stdio: ['ignore', 'pipe', 'ignore'] }).toString();
+    const m = out.match(/\bsrc (\d+\.\d+\.\d+\.\d+)/);
+    if (m) return m[1];
+  } catch {}
+  for (const addrs of Object.values(os.networkInterfaces())) {
+    for (const a of addrs || []) if (a.family === 'IPv4' && !a.internal) return a.address;
+  }
+  return '127.0.0.1';
+}
+const SHOWN_HOST = HOST === '0.0.0.0' ? localIp() : HOST;
+const PAIR_URL = `http://${SHOWN_HOST}:${PORT}/pair?t=${TOKEN}`;
 
 if (process.argv.includes('--pair')) { console.log(PAIR_URL); process.exit(0); }
 
@@ -447,21 +455,10 @@ const server = http.createServer((req, res) => {
 
 server.listen(PORT, HOST, () => {
   console.log(`\n  🥡  Takeout v${VERSION}`);
-  console.log(`  Serving   http://${HOST}:${PORT}`);
+  console.log(`  Serving   http://${SHOWN_HOST}:${PORT}`);
   console.log(`  Theme     ${currentTheme.name}`);
   console.log(`  Session   tmux attach -t ${SESSION}`);
   console.log(`  Pair      ${PAIR_URL}\n`);
-  if (HOST === '127.0.0.1' && !configuredHost()) {
-    console.log('  Tailscale isn\'t up — listening on this computer only for now.');
-    console.log('  Takeout will switch to your Tailscale address by itself once Tailscale connects.\n');
-    // Takeout often starts with the desktop, before Tailscale has connected.
-    // Keep looking; when an address appears, exit so the plugin / systemd
-    // restarts us bound to it. The tmux session is untouched by this.
-    setInterval(() => {
-      const ip = tailscaleIp();
-      if (ip) { console.log(`[takeout] Tailscale is up (${ip}) — restarting on it`); process.exit(75); }
-    }, 10000).unref();
-  }
   if (firstRun && has('notify-send')) {
     spawn('notify-send', ['-a', 'Takeout', '🥡 Takeout is ready', 'Run `takeout pair` in a terminal to connect your phone.'],
       { stdio: 'ignore', env: ENV }).on('error', () => {});

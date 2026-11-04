@@ -3,7 +3,6 @@
 set -euo pipefail
 
 DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
-PORT="${TAKEOUT_PORT:-7777}"
 UNIT="$HOME/.config/systemd/user/takeout.service"
 
 node_bin() {
@@ -11,26 +10,26 @@ node_bin() {
   elif command -v mise >/dev/null 2>&1; then mise which node 2>/dev/null
   fi
 }
-
+pair_url() { "$(node_bin)" "$DIR/server.js" --pair; }
 is_plugin() { [[ $DIR == "$HOME/.config/omarchy/plugins/"* ]]; }
+vpn_ip() { command -v tailscale >/dev/null 2>&1 && tailscale ip -4 2>/dev/null | head -1; }
 
 usage() {
   cat <<EOF
 🥡 takeout — your Omarchy terminal, to go
 
-  takeout pair       Show the pairing link + QR code for your phone
+  takeout pair       Show the link + QR code to pair your phone
   takeout status     Is it running?
-  takeout restart    Restart the server (your tmux session keeps running)
   takeout attach     Open the same session here at your desk
-  takeout host lan   Listen on your home network instead of Tailscale
-  takeout host       Back to Tailscale (the default)
+  takeout vpn        Reach Takeout away from home (sets up Tailscale)
+  takeout restart    Restart the server (your session keeps running)
   takeout reset      New pairing token — unpairs every device
 EOF
 }
 
 case "${1:-}" in
   pair)
-    url=$("$(node_bin)" "$DIR/server.js" --pair)
+    url=$(pair_url)
     echo
     if command -v qrencode >/dev/null 2>&1; then
       qrencode -t ansiutf8 -m 2 "$url"
@@ -38,24 +37,50 @@ case "${1:-}" in
       echo "  (for a scannable QR code: sudo pacman -S qrencode)"
     fi
     echo
-    echo "  Open on your phone:  $url"
+    echo "  On your home Wi-Fi, open on your phone:"
+    echo "    $url"
+    if ip=$(vpn_ip) && [[ -n $ip ]]; then
+      echo
+      echo "  Away from home (over Tailscale):"
+      echo "    http://$ip:${url#http://*:}"
+    fi
+    echo
     echo "  Then Share → Add to Home Screen."
     echo
     ;;
   status)
-    url=$("$(node_bin)" "$DIR/server.js" --pair)
+    url=$(pair_url)
     base="${url%%/pair*}"
-    if curl -fsS -o /dev/null --max-time 2 "$base/manifest.webmanifest"; then
+    port="${base##*:}"
+    if curl -fsS -o /dev/null --max-time 2 "http://127.0.0.1:$port/manifest.webmanifest"; then
       echo "🥡 Takeout is running at $base"
-      if [[ $base == *127.0.0.1* ]]; then
-        echo "   That's this computer only — your phone can't reach it yet."
-        echo "   Connect Tailscale (Takeout switches over by itself), or run:  takeout host lan"
-      fi
+      ip=$(vpn_ip || true)
+      if [[ -n ${ip:-} ]]; then echo "   and over Tailscale at http://$ip:$port"; fi
     else
-      echo "Takeout isn't answering at $base"
+      echo "Takeout isn't running."
       is_plugin && echo "  Check it's enabled:  omarchy plugin list"
       exit 1
     fi
+    ;;
+  vpn)
+    echo
+    echo "🥡 Takeout works on your home Wi-Fi out of the box. To reach it from"
+    echo "   anywhere, it uses Tailscale: a free, private network between your devices."
+    echo
+    if ! command -v tailscale >/dev/null 2>&1; then
+      echo "Installing Tailscale…"
+      sudo pacman -S --needed --noconfirm tailscale
+    fi
+    sudo systemctl enable --now tailscaled
+    if ! tailscale ip -4 >/dev/null 2>&1; then
+      echo
+      echo "Sign in to Tailscale (a link will open, or copy it into a browser):"
+      sudo tailscale up
+    fi
+    echo
+    echo "✓ Tailscale is connected. Install the Tailscale app on your phone and sign in"
+    echo "  with the same account. Then use this link from anywhere:"
+    "$0" pair
     ;;
   restart)
     if [[ -f $UNIT ]]; then
@@ -67,37 +92,6 @@ case "${1:-}" in
     echo "Takeout restarted."
     ;;
   attach) exec tmux new-session -A -s takeout ;;
-  host)
-    file="${XDG_CONFIG_HOME:-$HOME/.config}/takeout/host"
-    mkdir -p "$(dirname "$file")"
-    case "${2:-}" in
-      ""|tailscale|auto)
-        rm -f "$file"
-        if ip=$(tailscale ip -4 2>/dev/null | head -1) && [[ -n $ip ]]; then
-          echo "Takeout will use your Tailscale address: $ip"
-        else
-          echo "Takeout will use Tailscale, but Tailscale isn't connected on this computer yet."
-          echo "  Connect it:  sudo systemctl enable --now tailscaled && sudo tailscale up"
-          echo "  Takeout switches over by itself once it's up."
-        fi
-        ;;
-      lan)
-        ip=$(ip -4 route get 1.1.1.1 2>/dev/null | sed -n 's/.* src \([0-9.]*\).*/\1/p')
-        [[ -n $ip ]] || { echo "Couldn't find this computer's network address." >&2; exit 1; }
-        echo "$ip" >"$file"
-        echo "Takeout will listen on your home network at $ip."
-        echo "  Anyone on this Wi-Fi can reach the page, but they still need your pairing token."
-        echo "  Note: this address can change when your router hands out a new one."
-        ;;
-      *)
-        echo "$2" >"$file"
-        echo "Takeout will listen on $2."
-        ;;
-    esac
-    "$0" restart >/dev/null
-    sleep 2
-    "$0" pair
-    ;;
   reset)
     rm -f "${XDG_CONFIG_HOME:-$HOME/.config}/takeout/token"
     "$0" restart >/dev/null
