@@ -6,7 +6,7 @@ Takeout puts a real terminal from your Omarchy machine on your phone, and it wea
 
 No cloud. No account. No app store. It's an Omarchy plugin that runs on your machine, and your phone reaches it over your home Wi-Fi. Add a private VPN later to reach it from anywhere.
 
-![Takeout's home screen in Tokyo Night, Tokyo Night scrolled, Catppuccin Latte, and Hackerman](docs/home.png)
+![Takeout's home screen in Tokyo Night, Catppuccin Latte and Hackerman, and the process list](docs/home.png)
 
 ## Install
 
@@ -38,7 +38,7 @@ takeout pair
 - **Never loses your place.** The session lives in tmux. Lock your phone, lose signal, come back: it's all still there. Sit down at your desk and run `takeout attach` to pick up the same session.
 - **Sign-in links become taps.** When Claude Code, Codex, or `gh` print a login URL, Takeout offers to open it on your phone.
 
-![The terminal in Catppuccin, the theme picker, Tokyo Night, and Rose Pine](docs/screenshot.png)
+![The terminal in Tokyo Night, the theme picker, and the terminal in Kanagawa](docs/screenshot.png)
 
 ## Commands
 
