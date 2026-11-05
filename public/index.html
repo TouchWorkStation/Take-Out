@@ -14,12 +14,55 @@
   <link rel="stylesheet" href="/app.css">
 </head>
 <body>
-  <div class="mt-root">
+  <!-- Home: your Omarchy desktop, on your phone. -->
+  <div id="home" class="om-home">
+    <div id="homeWall" class="om-wall"></div>
+    <div class="om-shade"></div>
+    <div class="om-scroll">
+      <header class="om-bar">
+        <div id="ws" class="om-ws" aria-label="Workspaces"></div>
+        <div id="barClock" class="om-bar-clock"></div>
+        <div id="barRight" class="om-bar-right"></div>
+      </header>
+
+      <main class="om-grid">
+        <section class="om-win om-clock" data-title="clock">
+          <div id="time" class="om-time">--:--</div>
+          <div id="date" class="om-date"></div>
+          <div id="who" class="om-who"></div>
+        </section>
+
+        <section class="om-win om-sys" data-title="system">
+          <div class="om-meter"><span>cpu</span><i><b id="cpuBar"></b></i><em id="cpuVal">–</em></div>
+          <div class="om-meter"><span>mem</span><i><b id="memBar"></b></i><em id="memVal">–</em></div>
+          <div class="om-meter"><span>disk</span><i><b id="diskBar"></b></i><em id="diskVal">–</em></div>
+          <div class="om-meter" id="batRow" hidden><span>bat</span><i><b id="batBar"></b></i><em id="batVal">–</em></div>
+          <div class="om-facts"><span id="uptime"></span><span id="load"></span></div>
+        </section>
+
+        <section id="peekWin" class="om-win om-term" data-title="terminal" role="button" tabindex="0" aria-label="Open terminal">
+          <pre id="peek" class="om-peek"></pre>
+          <div class="om-open">open terminal <span aria-hidden="true">›</span></div>
+        </section>
+
+        <section class="om-win om-theme" data-title="theme">
+          <div id="homeTheme" class="om-theme-name">…</div>
+          <div id="palette" class="om-palette" aria-hidden="true"></div>
+          <div class="om-actions">
+            <button id="homeThemes">themes</button>
+            <button id="nextBg">next wallpaper</button>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <div class="mt-root" id="termView" hidden>
     <div id="wall"></div>
 
     <header class="mt-top">
+      <button id="homeBtn" class="mt-home" aria-label="Home">‹ home</button>
       <span id="status" class="mt-dot" title="connecting"></span>
-      <span class="mt-brand">takeout</span>
       <button id="themeBtn" class="mt-chip" aria-haspopup="dialog"><span class="sw"></span><span id="themeName">…</span></button>
     </header>
 

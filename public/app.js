@@ -119,6 +119,8 @@
   // instead of rendering ~120 columns wide and running off-screen.
   let lastSize = '';
   function measure() {
+    // Hidden behind the home screen: nothing to measure, and tmux must not shrink to nothing.
+    if (!pane.clientWidth || !pane.clientHeight) return;
     let cols = 80, rows = 24;
     try {
       const probe = document.createElement('span');
@@ -190,8 +192,12 @@
     ansi.forEach((v, i) => set(`--c${i}`, v));
     document.documentElement.style.colorScheme = c.mode === 'light' ? 'light' : 'dark';
     document.querySelector('meta[name="theme-color"]').setAttribute('content', c.background);
-    $('#wall').style.backgroundImage = theme.background ? `url(/api/background?v=${theme.background})` : 'none';
+    $('#wall').style.backgroundImage = theme.background && theme.backgroundType !== 'video' ? `url(/api/background?v=${theme.background})` : 'none';
     $('#themeName').textContent = pretty(theme.name);
+    set('--win-border', borderImage(c.hyprland_active_border, c.accent));
+    setWallpaper(theme);
+    $('#homeTheme').textContent = pretty(theme.name);
+    $('#palette').replaceChildren(...ansi.map((col) => { const i = document.createElement('i'); i.style.background = col; return i; }));
     loadFont(theme);
 
     const changed = current && current.name !== theme.name;
@@ -218,6 +224,7 @@
       const d = JSON.parse(e.data);
       text = text.slice(0, d.keep) + d.add;
       render(text);
+      if (view === 'home') renderPeek();
       detectLinks(d.add.slice(-4000));
     });
   }
@@ -300,5 +307,173 @@
     toastTimer = setTimeout(() => t.classList.remove('show'), 2200);
   }
 
+  // ---------- home screen ----------
+  // The theme's window border: Omarchy's hyprland_active_border when the theme
+  // sets one (e.g. "rgba(26a269ee) rgba(2ec27eee) 45deg"), otherwise the accent.
+  function borderImage(spec, accent) {
+    const toCss = (tok) => {
+      let m = tok.match(/^rgba?\(([0-9a-f]{6})([0-9a-f]{2})?\)$/i);
+      if (m) return `#${m[1]}${m[2] || ''}`;
+      m = tok.match(/^#?([0-9a-f]{6,8})$/i);
+      return m ? `#${m[1]}` : null;
+    };
+    const parts = String(spec || '').trim().split(/\s+/).filter(Boolean);
+    const angle = (parts.find((t) => /deg$/.test(t)) || '180deg');
+    const cols = parts.map(toCss).filter(Boolean);
+    if (!cols.length) cols.push(accent || 'currentColor');
+    if (cols.length === 1) cols.push(cols[0]);
+    return `linear-gradient(${angle}, ${cols.join(', ')}) 1`;
+  }
+
+  let wallKey = null;
+  function setWallpaper(theme) {
+    const key = theme.background || 'none';
+    if (key === wallKey) return;
+    wallKey = key;
+    const wall = $('#homeWall');
+    wall.replaceChildren();
+    wall.style.backgroundImage = 'none';
+    if (!theme.background) return;
+    const src = `/api/background?v=${theme.background}`;
+    if (theme.backgroundType === 'video') {
+      const v = document.createElement('video');
+      Object.assign(v, { src, muted: true, loop: true, autoplay: true, playsInline: true });
+      v.setAttribute('playsinline', '');
+      wall.appendChild(v);
+      v.play().catch(() => {});
+    } else {
+      wall.style.opacity = '0';
+      const img = new Image();
+      img.onload = () => { wall.style.backgroundImage = `url(${src})`; wall.style.opacity = '1'; };
+      img.src = src;
+    }
+  }
+
+  // The newest lines of the live terminal, in a little window.
+  const peek = $('#peek');
+  function renderPeek() {
+    const n = lines.length;
+    const from = Math.max(0, n - 12);
+    const frag = document.createDocumentFragment();
+    let st = startStates[from] || Ansi.blank();
+    for (let j = from; j < n; j++) {
+      const el = document.createElement('div');
+      st = Ansi.renderLine(el, lines[j], st);
+      frag.appendChild(el);
+    }
+    peek.replaceChildren(frag);
+  }
+
+  const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  const pad = (n) => String(n).padStart(2, '0');
+  function tickClock() {
+    const d = new Date();
+    const hh = pad(d.getHours()), mm = pad(d.getMinutes());
+    $('#time').innerHTML = `${hh}<span class="colon">:</span>${mm}`;
+    $('#date').textContent = `${DAYS[d.getDay()]}, ${MONTHS[d.getMonth()]} ${d.getDate()}`;
+    $('#barClock').textContent = `${DAYS[d.getDay()].slice(0, 3)} ${hh}:${mm}`;
+  }
+
+  const gb = (b) => b >= 1e12 ? `${(b / 1e12).toFixed(1)}T` : `${(b / 1e9).toFixed(b >= 1e10 ? 0 : 1)}G`;
+  function meter(bar, val, pct, label) {
+    const b = $(bar);
+    b.style.width = `${Math.max(2, Math.min(100, pct))}%`;
+    b.className = pct >= 85 ? 'high' : pct >= 60 ? 'mid' : '';
+    $(val).textContent = label;
+  }
+  function uptime(s) {
+    const d = Math.floor(s / 86400), h = Math.floor(s / 3600) % 24, m = Math.floor(s / 60) % 60;
+    return `up ${d ? d + 'd ' : ''}${h ? h + 'h ' : ''}${m}m`;
+  }
+
+  let homeTimer = null;
+  async function refreshHome() {
+    let h;
+    try { h = await (await fetch('/api/home')).json(); } catch { return; }
+    $('#who').innerHTML = '';
+    const b = document.createElement('b');
+    b.textContent = h.user;
+    $('#who').append(b, `@${h.host}`);
+    meter('#cpuBar', '#cpuVal', h.cpu, `${h.cpu}%`);
+    meter('#memBar', '#memVal', (h.mem.used / h.mem.total) * 100, `${gb(h.mem.used)}/${gb(h.mem.total)}`);
+    if (h.disk) meter('#diskBar', '#diskVal', (h.disk.used / h.disk.total) * 100, `${gb(h.disk.used)}/${gb(h.disk.total)}`);
+    const bat = h.battery;
+    $('#batRow').hidden = !bat;
+    if (bat) meter('#batBar', '#batVal', 100 - bat.pct, `${bat.pct}%${bat.status === 'Charging' ? ' ⚡' : ''}`);
+    if (bat) $('#batBar').style.width = `${Math.max(2, bat.pct)}%`;
+    $('#uptime').textContent = uptime(h.uptime);
+    $('#load').textContent = `load ${h.load.toFixed(2)}`;
+
+    const right = $('#barRight');
+    right.replaceChildren();
+    const cpu = document.createElement('span');
+    cpu.textContent = `cpu ${h.cpu}%`;
+    if (h.cpu >= 85) cpu.className = 'crit';
+    right.appendChild(cpu);
+    if (bat) {
+      const s = document.createElement('span');
+      s.textContent = `${bat.status === 'Charging' ? '⚡' : 'bat'} ${bat.pct}%`;
+      if (bat.pct <= 15) s.className = 'crit'; else if (bat.pct <= 30) s.className = 'warn';
+      right.appendChild(s);
+    }
+
+    // Workspaces like Omarchy's bar: 1–5 always shown, plus any others in use.
+    const ws = $('#ws');
+    ws.replaceChildren();
+    const info = h.workspaces;
+    const ids = new Set([1, 2, 3, 4, 5, ...(info ? info.list.map((w) => w.id) : [])]);
+    for (const id of [...ids].sort((a, b) => a - b)) {
+      const w = info && info.list.find((x) => x.id === id);
+      const btn = document.createElement('button');
+      btn.textContent = id;
+      btn.dataset.id = id;
+      if (w && w.windows) btn.classList.add('has');
+      if (info && info.active === id) btn.classList.add('on');
+      if (!info) btn.disabled = true;
+      ws.appendChild(btn);
+    }
+  }
+  $('#ws').addEventListener('click', async (e) => {
+    const b = e.target.closest('button');
+    if (!b || b.disabled) return;
+    await post('/api/workspace', { id: +b.dataset.id }).catch(() => {});
+    refreshHome();
+  });
+
+  // ---------- views: home ⇄ terminal ----------
+  let view = 'home';
+  function show(next, push = true) {
+    view = next;
+    const home = next === 'home';
+    $('#home').hidden = !home;
+    $('#termView').hidden = home;
+    clearInterval(homeTimer);
+    if (home) {
+      renderPeek();
+      refreshHome();
+      homeTimer = setInterval(() => { if (!document.hidden) refreshHome(); }, 2500);
+    } else {
+      autoScroll = true;
+      lastSize = '';
+      requestAnimationFrame(() => { pane.scrollTop = pane.scrollHeight; measure(); });
+      input.focus({ preventScroll: true });
+    }
+    if (push) history.pushState({ view: next }, '', next === 'home' ? '#' : '#terminal');
+  }
+  window.addEventListener('popstate', (e) => show((e.state && e.state.view) || (location.hash === '#terminal' ? 'terminal' : 'home'), false));
+  $('#peekWin').addEventListener('click', () => show('terminal'));
+  $('#peekWin').addEventListener('keydown', (e) => { if (e.key === 'Enter') show('terminal'); });
+  $('#homeBtn').addEventListener('click', () => (history.state && history.state.view === 'terminal' ? history.back() : show('home')));
+  $('#homeThemes').addEventListener('click', openSheet);
+  $('#nextBg').addEventListener('click', async () => {
+    const r = await post('/api/background/next').catch(() => null);
+    toast(r && r.ok ? 'next wallpaper' : 'can’t change wallpaper here');
+  });
+
+  tickClock();
+  setInterval(tickClock, 1000);
+  history.replaceState({ view: location.hash === '#terminal' ? 'terminal' : 'home' }, '');
+  show(location.hash === '#terminal' ? 'terminal' : 'home', false);
   connect();
 })();

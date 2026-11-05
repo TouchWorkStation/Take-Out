@@ -6,7 +6,7 @@ Takeout puts a real terminal from your Omarchy machine on your phone, and it wea
 
 No cloud. No account. No app store. It's an Omarchy plugin that runs on your machine, and your phone reaches it over your home Wi-Fi. Add a private VPN later to reach it from anywhere.
 
-![Takeout on a phone](docs/screenshot.png)
+![Takeout's home screen in Tokyo Night, Tokyo Night scrolled, Catppuccin Latte, and Hackerman](docs/home.png)
 
 ## Install
 
@@ -29,6 +29,7 @@ takeout pair
 
 ## What it does
 
+- **Your Omarchy desktop, on your phone.** Takeout opens to a home screen built the way Omarchy builds your desktop: your actual wallpaper, square windows with your theme's border (gradient and all), and a bar with your live workspaces. Tap a workspace to switch your desktop. Widgets show a big clock, CPU, memory, disk, battery, and a live preview of your terminal. On Tokyo Night it looks like Tokyo Night.
 - **A terminal built for thumbs.** Type on a normal prompt line and hit send. One-tap esc, tab, ^c, ^d, arrows, ^r, and paste. Native scrolling and text selection, with a "latest" button when you've scrolled up.
 - **Fast.** Commands echo back in about 40 ms over your tailnet, and only the changed part of the screen travels to your phone.
 - **Your theme, live.** Every color comes from your active Omarchy theme, including colored `ls`, `git`, and 256-color and truecolor output. Change themes anywhere and the whole scrollback recolors instantly.
@@ -36,6 +37,8 @@ takeout pair
 - **Your font, too.** Takeout serves the exact monospace font your desktop uses.
 - **Never loses your place.** The session lives in tmux. Lock your phone, lose signal, come back: it's all still there. Sit down at your desk and run `takeout attach` to pick up the same session.
 - **Sign-in links become taps.** When Claude Code, Codex, or `gh` print a login URL, Takeout offers to open it on your phone.
+
+![The terminal in Catppuccin, the theme picker, Tokyo Night, and Rose Pine](docs/screenshot.png)
 
 ## Commands
 

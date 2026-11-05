@@ -245,7 +245,8 @@ function snapshotTheme() {
   let bgId = null;
   if (bg) { try { bgId = hash(bg + fs.statSync(bg).mtimeMs); } catch {} }
   const ff = fontFilePath();
-  const theme = { name: readThemeName(), colors: readColors(), font: readFont(), fontFile: ff ? hash(ff) : null, background: bgId };
+  const bgType = bg && /\.(mp4|webm|mov|mkv)$/i.test(bg) ? 'video' : 'image';
+  const theme = { name: readThemeName(), colors: readColors(), font: readFont(), fontFile: ff ? hash(ff) : null, background: bgId, backgroundType: bgType };
   theme.id = hash(JSON.stringify(theme));
   return theme;
 }
@@ -267,6 +268,94 @@ function themeSwatch(name) {
     } catch {}
   }
   return null;
+}
+
+// ---------- wallpaper, sized for a phone ----------
+// Omarchy wallpapers run up to 8K (38 megapixels) — slow over Wi-Fi and more
+// than some phones will decode. Make a cached copy about 2400px tall with the
+// libvips / ImageMagick that Omarchy ships. Videos are served as they are.
+const CACHE_DIR = path.join(process.env.XDG_CACHE_HOME || path.join(HOME, '.cache'), 'takeout');
+const resizing = new Map();
+function phoneWallpaper(src) {
+  if (/\.(mp4|webm|mov|mkv|gif)$/i.test(src)) return Promise.resolve(src);
+  let st;
+  try { st = fs.statSync(src); } catch { return Promise.resolve(src); }
+  const out = path.join(CACHE_DIR, `bg-${hash(src + st.mtimeMs + st.size)}.jpg`);
+  if (fs.existsSync(out)) return Promise.resolve(out);
+  if (resizing.has(out)) return resizing.get(out);
+  const job = (async () => {
+    fs.mkdirSync(CACHE_DIR, { recursive: true });
+    const tmp = out + '.tmp.jpg';
+    const attempts = [
+      ['vipsthumbnail', [src, '--size', 'x2400>', '-o', `${tmp}[Q=84,strip]`]],
+      ['magick', [src, '-resize', 'x2400>', '-strip', '-quality', '84', tmp]],
+      ['convert', [src, '-resize', 'x2400>', '-strip', '-quality', '84', tmp]],
+    ];
+    for (const [cmd, args] of attempts) {
+      try {
+        await run(cmd, args, { timeout: 30000 });
+        if (fs.statSync(tmp).size > 0) { fs.renameSync(tmp, out); return out; }
+      } catch {}
+    }
+    try { fs.unlinkSync(tmp); } catch {}
+    return src; // no image tools: send the original
+  })().finally(() => resizing.delete(out));
+  resizing.set(out, job);
+  return job;
+}
+
+// ---------- home screen: system + desktop ----------
+let lastCpu = null;
+function cpuPercent() {
+  const t = os.cpus().reduce((a, c) => {
+    const total = Object.values(c.times).reduce((x, y) => x + y, 0);
+    return { idle: a.idle + c.times.idle, total: a.total + total };
+  }, { idle: 0, total: 0 });
+  const prev = lastCpu;
+  lastCpu = t;
+  if (!prev || t.total <= prev.total) return Math.round((1 - t.idle / t.total) * 100);
+  return Math.max(0, Math.min(100, Math.round((1 - (t.idle - prev.idle) / (t.total - prev.total)) * 100)));
+}
+function memory() {
+  try {
+    const m = fs.readFileSync('/proc/meminfo', 'utf8');
+    const kb = (k) => +(m.match(new RegExp(`^${k}:\\s+(\\d+)`, 'm')) || [0, 0])[1] * 1024;
+    const total = kb('MemTotal');
+    return { used: total - kb('MemAvailable'), total };
+  } catch { return { used: os.totalmem() - os.freemem(), total: os.totalmem() }; }
+}
+function disk() {
+  try { const s = fs.statfsSync('/'); return { used: (s.blocks - s.bavail) * s.bsize, total: s.blocks * s.bsize }; }
+  catch { return null; }
+}
+function battery() {
+  try {
+    const dir = '/sys/class/power_supply';
+    const bat = fs.readdirSync(dir).find((d) => /^BAT/i.test(d));
+    if (!bat) return null;
+    const read = (f) => fs.readFileSync(path.join(dir, bat, f), 'utf8').trim();
+    return { pct: +read('capacity'), status: read('status') };
+  } catch { return null; }
+}
+async function workspaces() {
+  try {
+    const [all, active] = await Promise.all([run('hyprctl', ['-j', 'workspaces']), run('hyprctl', ['-j', 'activeworkspace'])]);
+    const list = JSON.parse(all).filter((w) => w.id > 0).map((w) => ({ id: w.id, windows: w.windows }));
+    return { list: list.sort((a, b) => a.id - b.id), active: JSON.parse(active).id };
+  } catch { return null; }
+}
+async function homeData() {
+  return {
+    user: os.userInfo().username,
+    host: os.hostname(),
+    cpu: cpuPercent(),
+    load: os.loadavg()[0],
+    mem: memory(),
+    disk: disk(),
+    battery: battery(),
+    uptime: os.uptime(),
+    workspaces: await workspaces(),
+  };
 }
 
 // ---------- live stream (Server-Sent Events) ----------
@@ -324,6 +413,8 @@ setInterval(() => {
   if (next.id === currentTheme.id) return;
   currentTheme = next;
   console.log(`[takeout] theme → ${next.name}`);
+  const bg = backgroundPath();
+  if (bg) phoneWallpaper(bg); // have it ready before the phone asks
   for (const s of streams) sse(s.res, 'theme', currentTheme);
 }, 1200).unref();
 
@@ -333,7 +424,8 @@ setInterval(() => { for (const s of streams) s.res.write(': ping\n\n'); }, 20000
 // ---------- HTTP ----------
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
   '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.webp': 'image/webp', '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg', '.webmanifest': 'application/manifest+json' };
+  '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.mp4': 'video/mp4', '.webm': 'video/webm', '.mov': 'video/quicktime',
+  '.mkv': 'video/x-matroska', '.webmanifest': 'application/manifest+json' };
 
 function send(res, code, body, type = 'text/plain; charset=utf-8', extra = {}) {
   res.writeHead(code, { 'Content-Type': type, 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer',
@@ -345,6 +437,27 @@ function sendFile(res, file, extra) {
   fs.readFile(file, (err, data) => err ? send(res, 404, 'not found')
     : send(res, 200, data, TYPES[path.extname(file).toLowerCase()] || 'application/octet-stream', extra));
 }
+// Wallpapers can be videos, and iPhones only play video served with byte ranges.
+function sendRange(req, res, file) {
+  fs.stat(file, (err, st) => {
+    if (err) return send(res, 404, 'not found');
+    const type = TYPES[path.extname(file).toLowerCase()] || 'application/octet-stream';
+    const base = { 'Content-Type': type, 'Accept-Ranges': 'bytes', 'Cache-Control': 'private, max-age=86400', 'X-Content-Type-Options': 'nosniff' };
+    const m = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range || '');
+    if (!m) {
+      res.writeHead(200, { ...base, 'Content-Length': st.size });
+      return fs.createReadStream(file).pipe(res);
+    }
+    let start = m[1] === '' ? st.size - (+m[2]) : +m[1];
+    let end = m[1] !== '' && m[2] !== '' ? +m[2] : st.size - 1;
+    if (start < 0) start = 0;
+    if (end >= st.size) end = st.size - 1;
+    if (start > end) { res.writeHead(416, { 'Content-Range': `bytes */${st.size}` }); return res.end(); }
+    res.writeHead(206, { ...base, 'Content-Length': end - start + 1, 'Content-Range': `bytes ${start}-${end}/${st.size}` });
+    fs.createReadStream(file, { start, end }).pipe(res);
+  });
+}
+
 function readBody(req, cb, limit = 70000) {
   let b = '';
   req.on('data', (c) => { b += c; if (b.length > limit) req.destroy(); });
@@ -448,12 +561,32 @@ const server = http.createServer((req, res) => {
   }
   if (p === '/api/background') {
     const bg = backgroundPath();
-    return bg ? sendFile(res, bg) : send(res, 404, 'none');
+    if (!bg) return send(res, 404, 'none');
+    return phoneWallpaper(bg).then((file) => sendRange(req, res, file));
+  }
+  if (p === '/api/home') return homeData().then((d) => json(res, d));
+  if (p === '/api/workspace' && req.method === 'POST') {
+    if (!sameOrigin(req)) return send(res, 403, 'forbidden');
+    return readBody(req, (b) => {
+      let id = 0;
+      try { id = parseInt(JSON.parse(b).id, 10); } catch {}
+      if (!(id >= 1 && id <= 20)) return json(res, { ok: false }, 400);
+      run('hyprctl', ['dispatch', 'workspace', String(id)]).then(() => json(res, { ok: true }), () => json(res, { ok: false }, 500));
+    }, 256);
+  }
+  if (p === '/api/background/next' && req.method === 'POST') {
+    if (!sameOrigin(req)) return send(res, 403, 'forbidden');
+    if (!has('omarchy-theme-bg-next')) return json(res, { ok: false, error: 'not on Omarchy' }, 400);
+    const child = spawn('omarchy-theme-bg-next', [], { detached: true, stdio: 'ignore', env: ENV });
+    child.on('error', () => {});
+    child.unref();
+    return json(res, { ok: true });
   }
   send(res, 404, 'not found');
 });
 
 server.listen(PORT, HOST, () => {
+  { const bg = backgroundPath(); if (bg) phoneWallpaper(bg); }
   console.log(`\n  🥡  Takeout v${VERSION}`);
   console.log(`  Serving   http://${SHOWN_HOST}:${PORT}`);
   console.log(`  Theme     ${currentTheme.name}`);
