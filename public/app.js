@@ -531,35 +531,89 @@
   // The Omarchy logo comes from Omarchy's own font.
   new FontFace('OmarchyLogo', 'url(/api/font/omarchy)').load().then((f) => document.fonts.add(f)).catch(() => {});
 
-  // ---------- views: home ⇄ terminal ----------
+  // ---------- processes ----------
+  let procSort = 'cpu';
+  let procTimer = null;
+  const openRows = new Set();
+  function pctClass(v, mid, high) { return v <= 0 ? 'zero' : v >= high ? 'high' : v >= mid ? 'mid' : ''; }
+  const fmtCpu = (v) => (v >= 10 ? Math.round(v) : v.toFixed(1)) + '%';
+  async function refreshProcs() {
+    let d;
+    try { d = await (await fetch(`/api/processes?sort=${procSort}`)).json(); } catch { return; }
+    if (d.warming) setTimeout(refreshProcs, 600); // first look has no CPU baseline yet
+    $('#procCount').textContent = `${d.count} running`;
+    const list = $('#procList');
+    const rows = d.rows.map((p) => {
+      const row = el('div', 'om-proc-row');
+      row.dataset.pid = p.pid;
+      if (openRows.has(p.pid)) row.classList.add('open');
+      const main = el('div');
+      main.append(el('span', 'om-proc-name', p.name), el('span', 'om-proc-cmd', `${p.pid} · ${p.user} · ${p.cmd}`));
+      row.append(main, el('em', pctClass(p.cpu, 25, 75), fmtCpu(p.cpu)), el('em', pctClass(p.mem, 10, 30), `${p.mem.toFixed(1)}%`));
+      return row;
+    });
+    list.replaceChildren(...rows);
+  }
+  $('#procList').addEventListener('click', (e) => {
+    const row = e.target.closest('.om-proc-row');
+    if (!row) return;
+    const pid = +row.dataset.pid;
+    row.classList.toggle('open');
+    if (row.classList.contains('open')) openRows.add(pid); else openRows.delete(pid);
+  });
+  $('.om-sort').addEventListener('click', (e) => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    procSort = b.dataset.sort;
+    document.querySelectorAll('.om-sort button').forEach((x) => x.classList.toggle('on', x === b));
+    $('#procList').scrollTop = 0;
+    refreshProcs();
+  });
+
+  // ---------- views: home ⇄ processes ⇄ terminal ----------
   let view = 'home';
+  const hashOf = (v) => (v === 'home' ? '#' : `#${v}`);
+  const viewOfHash = () => (location.hash === '#terminal' ? 'terminal' : location.hash === '#processes' ? 'processes' : 'home');
   function show(next, push = true) {
     view = next;
-    const home = next === 'home';
-    $('#home').hidden = !home;
-    document.documentElement.classList.toggle('home', home);
-    $('#termView').hidden = home;
+    const onHome = next !== 'terminal';
+    const procs = next === 'processes';
+    $('#home').hidden = !onHome;
+    $('#termView').hidden = onHome;
+    document.documentElement.classList.toggle('home', onHome);
+    $('#home').classList.toggle('procs', procs);
+    $('#procWin').hidden = !procs;
     clearInterval(homeTimer);
-    if (home) {
-      renderPeek();
+    clearInterval(procTimer);
+    if (onHome) {
       refreshHome();
       homeTimer = setInterval(() => { if (!document.hidden) refreshHome(); }, 2500);
-    } else {
+    }
+    if (next === 'home') renderPeek();
+    if (procs) {
+      refreshProcs();
+      procTimer = setInterval(() => { if (!document.hidden) refreshProcs(); }, 2000);
+    }
+    if (next === 'terminal') {
       autoScroll = true;
       lastSize = '';
       requestAnimationFrame(() => { pane.scrollTop = pane.scrollHeight; measure(); });
       input.focus({ preventScroll: true });
     }
-    if (push) history.pushState({ view: next }, '', next === 'home' ? '#' : '#terminal');
+    if (push) history.pushState({ view: next }, '', hashOf(next));
   }
-  window.addEventListener('popstate', (e) => show((e.state && e.state.view) || (location.hash === '#terminal' ? 'terminal' : 'home'), false));
+  const goBack = () => (history.state && history.state.view !== 'home' && history.length > 1 ? history.back() : show('home'));
+  window.addEventListener('popstate', (e) => show((e.state && e.state.view) || viewOfHash(), false));
   $('#peekWin').addEventListener('click', () => show('terminal'));
   $('#peekWin').addEventListener('keydown', (e) => { if (e.key === 'Enter') show('terminal'); });
-  $('#homeBtn').addEventListener('click', () => (history.state && history.state.view === 'terminal' ? history.back() : show('home')));
+  $('#sysWin').addEventListener('click', () => show('processes'));
+  $('#sysWin').addEventListener('keydown', (e) => { if (e.key === 'Enter') show('processes'); });
+  $('#procBack').addEventListener('click', goBack);
+  $('#homeBtn').addEventListener('click', goBack);
 
   tickClock();
   setInterval(tickClock, 1000);
-  history.replaceState({ view: location.hash === '#terminal' ? 'terminal' : 'home' }, '');
-  show(location.hash === '#terminal' ? 'terminal' : 'home', false);
+  history.replaceState({ view: viewOfHash() }, '');
+  show(viewOfHash(), false);
   connect();
 })();

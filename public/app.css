@@ -299,3 +299,34 @@ dialog#sheet::backdrop { background: rgba(0, 0, 0, .45); }
   .om-grid { grid-template-columns: 1fr 1fr; max-width: 980px; margin: 0 auto; }
   .om-clock, .om-sys { grid-column: span 1; }
 }
+
+/* Widgets sit at the bottom, near your thumb; the wallpaper shows above them. */
+.om-scroll { display: flex; flex-direction: column; }
+.om-grid { margin-top: auto; width: 100%; }
+.om-sys { cursor: pointer; }
+.om-sys:active, .om-term:active { background: color-mix(in srgb, var(--bg) 92%, var(--accent)); }
+.om-sys .om-open { margin-top: 0; }
+
+/* Processes: btop's process box, on a phone. */
+.om-procs[hidden] { display: none; }
+.om-procs { margin: 18px 10px 10px; flex: 1; display: flex; flex-direction: column; min-height: 0; padding: 14px 12px 6px; }
+.om-procs-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.om-back { border: 0; background: transparent; color: var(--accent); font: 12px var(--mono); padding: 4px 0; }
+.om-proc-count { color: var(--muted); font-size: 11px; }
+.om-sort { margin-left: auto; display: flex; border: 1px solid color-mix(in srgb, var(--fg) 16%, transparent); }
+.om-sort button { border: 0; background: transparent; color: var(--muted); font: 11px var(--mono); padding: 6px 10px; }
+.om-sort button.on { background: var(--accent); color: var(--bg); }
+.om-proc-row { display: grid; grid-template-columns: minmax(0, 1fr) 52px 52px; gap: 8px; align-items: start; padding: 7px 0; }
+.om-proc-cols { color: var(--muted); font-size: 10.5px; padding: 0 0 6px; border-bottom: 1px solid color-mix(in srgb, var(--fg) 12%, transparent); }
+.om-proc-cols span:not(:first-child), .om-proc-row > em { text-align: right; }
+.om-proc-list { overflow-y: auto; -webkit-overflow-scrolling: touch; flex: 1; min-height: 0; }
+.om-proc-list .om-proc-row { border-bottom: 1px solid color-mix(in srgb, var(--fg) 6%, transparent); cursor: pointer; }
+.om-proc-name { display: block; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.om-proc-cmd { display: block; margin-top: 2px; color: var(--muted); font-size: 10.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.om-proc-row.open .om-proc-cmd { white-space: normal; word-break: break-all; }
+.om-proc-row > em { font-style: normal; font-variant-numeric: tabular-nums; color: var(--fg); }
+.om-proc-row > em.zero { color: var(--muted); }
+.om-proc-row > em.mid { color: var(--c3); }
+.om-proc-row > em.high { color: var(--c1); }
+.om-home.procs .om-grid { display: none; }
+.om-proc-row > div { min-width: 0; }

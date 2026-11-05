@@ -344,6 +344,65 @@ async function workspaces() {
     return { list: list.sort((a, b) => a.id - b.id), active: JSON.parse(active).id };
   } catch { return null; }
 }
+// ---------- processes ----------
+// Current CPU per process, like top/btop: the change in each process's CPU
+// time since the last look, not ps's lifetime average.
+const CLK_TCK = 100;
+const PAGE = 4096;
+let procPrev = null; // { at, times: Map(pid -> jiffies) }
+let users = null;
+function userName(uid) {
+  if (!users) {
+    users = new Map();
+    try {
+      for (const line of fs.readFileSync('/etc/passwd', 'utf8').split('\n')) {
+        const f = line.split(':');
+        if (f.length > 2) users.set(+f[2], f[0]);
+      }
+    } catch {}
+  }
+  return users.get(uid) || String(uid);
+}
+function sampleProcs() {
+  const list = [];
+  let pids = [];
+  try { pids = fs.readdirSync('/proc').filter((d) => /^\d+$/.test(d)); } catch {}
+  for (const pid of pids) {
+    try {
+      const stat = fs.readFileSync(`/proc/${pid}/stat`, 'utf8');
+      const close = stat.lastIndexOf(')');
+      const name = stat.slice(stat.indexOf('(') + 1, close);
+      const f = stat.slice(close + 2).split(' '); // f[0] is field 3 (state)
+      const jiffies = +f[11] + +f[12];             // utime + stime
+      const rss = +f[21] * PAGE;
+      if (f[0] === 'Z') continue;
+      let cmd = '';
+      try { cmd = fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8').replace(/\0+$/, '').replace(/\0/g, ' '); } catch {}
+      let uid = 0;
+      try { uid = fs.statSync(`/proc/${pid}`).uid; } catch {}
+      list.push({ pid: +pid, name, cmd: cmd || `[${name}]`, user: userName(uid), jiffies, rss, threads: +f[17] });
+    } catch {} // processes come and go mid-read
+  }
+  return list;
+}
+function processes(sortBy) {
+  const now = Date.now();
+  const list = sampleProcs();
+  const prev = procPrev;
+  procPrev = { at: now, times: new Map(list.map((p) => [p.pid, p.jiffies])) };
+  const dt = prev ? (now - prev.at) / 1000 : 0;
+  const total = os.totalmem();
+  const rows = list.map((p) => {
+    const before = prev && prev.times.get(p.pid);
+    const cpu = dt > 0 && before != null ? Math.max(0, ((p.jiffies - before) / CLK_TCK / dt) * 100) : 0;
+    return { pid: p.pid, name: p.name, cmd: p.cmd.slice(0, 300), user: p.user, cpu: Math.round(cpu * 10) / 10,
+      mem: Math.round((p.rss / total) * 1000) / 10, rss: p.rss, threads: p.threads };
+  });
+  const key = sortBy === 'mem' ? 'rss' : sortBy === 'name' ? 'name' : 'cpu';
+  rows.sort((a, b) => key === 'name' ? a.name.localeCompare(b.name) : (b[key] - a[key]) || (b.rss - a.rss));
+  return { count: rows.length, warming: !prev || dt <= 0, rows: rows.slice(0, 150) };
+}
+
 // ---------- the desktop's bar, mirrored ----------
 // Read the bar layout the user's Omarchy shell is using, and the live state
 // each widget needs, so the phone draws the same bar the desktop shows.
@@ -725,6 +784,7 @@ const server = http.createServer((req, res) => {
     return phoneWallpaper(bg).then((file) => sendRange(req, res, file));
   }
   if (p === '/api/home') return homeData().then((d) => json(res, d));
+  if (p === '/api/processes') return json(res, processes(url.searchParams.get('sort')));
   if (p === '/api/font/omarchy') {
     const f = omarchyFontPath();
     return f ? sendFile(res, f, { 'Cache-Control': 'private, max-age=604800' }) : send(res, 404, 'none');

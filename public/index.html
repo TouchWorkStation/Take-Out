@@ -32,12 +32,13 @@
           <div id="who" class="om-who"></div>
         </section>
 
-        <section class="om-win om-sys" data-title="system">
+        <section id="sysWin" class="om-win om-sys" data-title="system" role="button" tabindex="0" aria-label="Show processes">
           <div class="om-meter"><span>cpu</span><i><b id="cpuBar"></b></i><em id="cpuVal">–</em></div>
           <div class="om-meter"><span>mem</span><i><b id="memBar"></b></i><em id="memVal">–</em></div>
           <div class="om-meter"><span>disk</span><i><b id="diskBar"></b></i><em id="diskVal">–</em></div>
           <div class="om-meter" id="batRow" hidden><span>bat</span><i><b id="batBar"></b></i><em id="batVal">–</em></div>
           <div class="om-facts"><span id="uptime"></span><span id="load"></span></div>
+          <div class="om-open">processes <span aria-hidden="true">›</span></div>
         </section>
 
         <section id="peekWin" class="om-win om-term" data-title="terminal" role="button" tabindex="0" aria-label="Open terminal">
@@ -45,6 +46,20 @@
           <div class="om-open">open terminal <span aria-hidden="true">›</span></div>
         </section>
       </main>
+
+      <section id="procWin" class="om-win om-procs" data-title="processes" hidden>
+        <div class="om-procs-head">
+          <button id="procBack" class="om-back">‹ home</button>
+          <span id="procCount" class="om-proc-count"></span>
+          <div class="om-sort" role="tablist">
+            <button data-sort="cpu" class="on">cpu</button>
+            <button data-sort="mem">mem</button>
+            <button data-sort="name">name</button>
+          </div>
+        </div>
+        <div class="om-proc-row om-proc-cols"><span>process</span><span>cpu</span><span>mem</span></div>
+        <div id="procList" class="om-proc-list"></div>
+      </section>
     </div>
   </div>
 
