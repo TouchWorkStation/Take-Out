@@ -435,3 +435,39 @@ html.screen, html.screen body { background: #000; }
 
 /* Keyboard up: it already covers the home-indicator area, so drop that padding. */
 html.kbd .sc-root { padding-bottom: 0; }
+
+/* Screen: the picture sits at the top, so your thumb has the space below. */
+.sc-surface canvas { margin: 0 auto !important; }
+
+/* The trackpad: the space under the picture. */
+.sc-pad[hidden] { display: none; }
+.sc-pad {
+  position: absolute; left: 10px; right: 10px; bottom: 10px; z-index: 1; pointer-events: none;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+  margin-top: 10px; border: 1px dashed color-mix(in srgb, var(--fg) 16%, transparent);
+  background: color-mix(in srgb, var(--fg) 4%, transparent);
+  color: color-mix(in srgb, var(--fg) 38%, transparent); font: 12px var(--mono); text-align: center;
+}
+.sc-pad span { letter-spacing: .2em; text-transform: uppercase; font-size: 11px; }
+.sc-pad small { font-size: 10.5px; line-height: 1.6; opacity: .8; }
+
+/* The pointer, drawn on the phone instantly. */
+.sc-cursor[hidden] { display: none; }
+.sc-cursor { position: absolute; left: 0; top: 0; z-index: 2; width: 20px; height: 20px; margin: -2px 0 0 -3px; pointer-events: none; will-change: transform; }
+.sc-cursor svg { width: 20px; height: 20px; fill: var(--fg); stroke: var(--bg); stroke-width: 1.6; stroke-linejoin: round; filter: drop-shadow(0 1px 2px rgba(0,0,0,.6)); }
+
+/* Settings */
+.sc-prefs[hidden] { display: none; }
+.sc-prefs {
+  position: absolute; right: 8px; top: calc(env(safe-area-inset-top) + 44px); z-index: 6; width: min(320px, calc(100vw - 16px));
+  padding: 14px; background: var(--bg); border: 2px solid transparent; border-image: var(--win-border);
+  box-shadow: 0 12px 32px rgba(0,0,0,.5); font: 12px var(--mono); color: var(--fg);
+}
+.sc-prefs-title { color: var(--accent); font-weight: 600; margin: 0 0 8px; }
+.sc-prefs #scSpeedRow { margin-top: 14px; }
+.sc-prefs #scSpeedRow[hidden] { display: none; }
+.sc-seg { display: flex; border: 1px solid color-mix(in srgb, var(--fg) 18%, transparent); }
+.sc-seg button { flex: 1; padding: 10px 6px; border: 0; background: transparent; color: var(--fg); font: 12px var(--mono); }
+.sc-seg button + button { border-left: 1px solid color-mix(in srgb, var(--fg) 18%, transparent); }
+.sc-seg button.on { background: var(--accent); color: var(--bg); }
+.sc-prefs-note { margin: 10px 0 0; color: var(--muted); font-size: 11.5px; line-height: 1.55; }

@@ -3,12 +3,19 @@
 // Built on noVNC (vendored, MPL-2.0). The phone talks only to Takeout's own
 // paired WebSocket; Takeout starts wayvnc on a private socket while you look.
 //
-// Touch, direct like a tablet (Takeout's own gesture layer, not a trackpad):
+// Two ways to control it (Settings in the screen view's top bar; saved per phone):
+//
+// Trackpad (default, made for one hand): the screen sits at the top and the
+// space below is a laptop-style trackpad that moves an on-screen pointer.
+//   move a finger = move the pointer (faster flicks go further)
+//   tap = click · tap, then touch again and drag = drag / select
+//   two-finger tap = right-click · two-finger drag = scroll · pinch = zoom
+//
+// Touch (direct, like a tablet):
 //   tap = click where your finger is · double-tap = double-click
 //   long-press = right-click · long-press then drag = drag / select
 //   two-finger tap = right-click · two-finger drag = scroll
-//   pinch = zoom the phone's view (up to 5×) · one-finger drag = pan when zoomed,
-//   scroll when not
+//   pinch = zoom (up to 5×) · one-finger drag = pan when zoomed, scroll when not
 import RFB from '/vendor/novnc/core/rfb.js';
 import KeyTable from '/vendor/novnc/core/input/keysym.js';
 import keysyms from '/vendor/novnc/core/input/keysymdef.js';
@@ -23,6 +30,11 @@ stage.appendChild(surface);
 const status = $('#scStatus');
 const msg = $('#scMsg');
 const kbd = $('#scKbd');
+
+const PREFS_KEY = 'takeout.screen';
+const prefs = { mode: 'trackpad', speed: 1 };
+try { Object.assign(prefs, JSON.parse(localStorage.getItem(PREFS_KEY) || '{}')); } catch {}
+function savePrefs() { try { localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)); } catch {} }
 
 let rfb = null;
 let wanted = false;     // the screen view is open
@@ -71,7 +83,7 @@ async function connect() {
   rfb.addEventListener('connect', () => {
     retry = 0;
     setStatus('live', 'ok');
-    requestAnimationFrame(layout);
+    requestAnimationFrame(() => { layout(); centerPointer(); });
     if (innerHeight > innerWidth && !hinted) { hinted = true; T().toast('turn your phone sideways for a bigger screen'); }
   });
   rfb.addEventListener('disconnect', (e) => {
@@ -195,11 +207,11 @@ kbd.addEventListener('blur', () => document.querySelector('.sc-kbd-btn').classLi
 // ---------- zoom & pan (on the phone) ----------
 const view = { z: 1, x: 0, y: 0 };
 // Keep the desktop image itself on screen: pan to its edges, not into the
-// black bars around it; when it's smaller than the phone, keep it centered.
-function clampAxis(off, stageLen, surfLen, imgLen) {
-  const margin = (surfLen - imgLen) / 2;
-  if (imgLen <= stageLen) return (stageLen - surfLen) / 2;
-  return Math.min(-margin, Math.max(stageLen - margin - imgLen, off));
+// black around it. Smaller than the phone: centered across, pinned to the top
+// (so your thumb has the space below — the trackpad in trackpad mode).
+function clampAxis(off, stageLen, surfLen, imgLen, imgStart) {
+  if (imgLen <= stageLen) return imgStart === 0 ? 0 : (stageLen - surfLen) / 2;
+  return Math.min(-imgStart, Math.max(stageLen - imgStart - imgLen, off));
 }
 function layout() {
   const r = stage.getBoundingClientRect();
@@ -207,8 +219,9 @@ function layout() {
   const c = canvas();
   if (c && c.width && c.height) {
     const fit = Math.min(r.width / c.width, r.height / c.height) * view.z;
-    view.x = clampAxis(view.x, r.width, w, c.width * fit);
-    view.y = clampAxis(view.y, r.height, h, c.height * fit);
+    const iw = c.width * fit, ih = c.height * fit;
+    view.x = clampAxis(view.x, r.width, w, iw, (w - iw) / 2);
+    view.y = clampAxis(view.y, r.height, h, ih, 0);
   } else {
     view.x = Math.min(0, Math.max(r.width - w, view.x));
     view.y = Math.min(0, Math.max(r.height - h, view.y));
@@ -220,6 +233,8 @@ function layout() {
   const zb = $('#scZoom');
   zb.textContent = view.z > 1.05 ? `${Math.round(view.z * 10) / 10}×` : 'zoom';
   zb.classList.toggle('on', view.z > 1.05);
+  placePad();
+  placeCursor();
 }
 function zoomAt(z, cx, cy) {
   z = Math.max(1, Math.min(5, z));
@@ -244,8 +259,6 @@ function keepTapVisible() {
   if (py < pad || py > sr.height - pad) view.y += sr.height / 2 - py;
   layout();
 }
-new ResizeObserver(() => { layout(); keepTapVisible(); }).observe(stage);
-layout();
 
 // ---------- touch → precise mouse on the computer ----------
 function canvas() { return surface.querySelector('canvas'); }
@@ -298,94 +311,271 @@ const HOLD_MS = 420, SLOP = 9;
 let g = null; // the current gesture
 const dist = (a, b) => Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
 const mid = (a, b) => ({ x: (a.clientX + b.clientX) / 2, y: (a.clientY + b.clientY) / 2 });
+function trackpad() { return prefs.mode === 'trackpad'; }
 
-function onStart(e) {
-  const t = e.touches;
-  if (t.length === 1) {
-    const f = t[0];
-    g = { mode: 'pending', sx: f.clientX, sy: f.clientY, lx: f.clientX, ly: f.clientY, t0: Date.now() };
-    g.hold = setTimeout(() => { if (g && g.mode === 'pending') { g.mode = 'hold'; buzz(); } }, HOLD_MS);
-  } else if (t.length === 2) {
-    if (g) { clearTimeout(g.hold); if (g.mode === 'drag') mouse('mouseup', g.lx, g.ly, 0); }
-    const m = mid(t[0], t[1]);
-    const r = stage.getBoundingClientRect();
-    g = { mode: 'two', d0: dist(t[0], t[1]), z0: view.z, m0: m, lm: m, ox: view.x, oy: view.y, r, t0: Date.now(), moved: false };
-  } else if (g) {
-    g.mode = 'ignore';
-  }
+// ---------- the trackpad pointer ----------
+// Kept in desktop pixels; shown instantly on the phone as a small pointer so
+// you're never waiting on the network to see where it is.
+const ptr = { x: null, y: null };
+const cursorEl = document.createElement('div');
+cursorEl.className = 'sc-cursor';
+cursorEl.innerHTML = '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 2 L3 16 L7 12.5 L9.6 18 L12 17 L9.5 11.6 L15 11.6 Z"/></svg>';
+stage.appendChild(cursorEl);
+const padEl = document.createElement('div');
+padEl.className = 'sc-pad';
+padEl.innerHTML = '<span>trackpad</span><small>tap to click · tap-tap-drag to drag<br>two fingers: scroll, or tap to right-click</small>';
+stage.appendChild(padEl);
+
+function fb() { const c = canvas(); return c && c.width ? { w: c.width, h: c.height } : null; }
+function centerPointer() {
+  const f = fb();
+  if (f && ptr.x == null) { ptr.x = f.w / 2; ptr.y = f.h / 2; }
+  placeCursor();
 }
-function onMove(e) {
-  if (!g) return;
-  const t = e.touches;
-  if (g.mode === 'two' || g.mode === 'pinch' || g.mode === 'scroll2') {
-    if (t.length < 2) return;
-    const m = mid(t[0], t[1]);
-    const ratio = dist(t[0], t[1]) / g.d0;
-    if (g.mode === 'two') {
-      if (Math.abs(ratio - 1) > 0.12) g.mode = 'pinch';
-      else if (Math.hypot(m.x - g.m0.x, m.y - g.m0.y) > 14) g.mode = 'scroll2';
-      else return;
-      g.moved = true;
-    }
-    if (g.mode === 'pinch') {
-      // zoom around the pinch, and follow the fingers as they move
-      const z = Math.max(1, Math.min(5, g.z0 * ratio));
-      const cx = g.m0.x - g.r.left, cy = g.m0.y - g.r.top;
-      view.z = z;
-      view.x = cx - (cx - g.ox) * (z / g.z0) + (m.x - g.m0.x);
-      view.y = cy - (cy - g.oy) * (z / g.z0) + (m.y - g.m0.y);
+function ptrClient() {
+  const c = canvas(), f = fb();
+  if (!c || !f || ptr.x == null) return null;
+  const r = c.getBoundingClientRect();
+  return { x: r.left + (ptr.x + 0.5) * r.width / f.w, y: r.top + (ptr.y + 0.5) * r.height / f.h };
+}
+function placeCursor() {
+  const p = trackpad() && rfb ? ptrClient() : null;
+  cursorEl.hidden = !p;
+  if (!p) return;
+  const s = stage.getBoundingClientRect();
+  cursorEl.style.transform = `translate(${p.x - s.left}px, ${p.y - s.top}px)`;
+}
+// The space under the picture, drawn as a pad so it's obvious where your thumb goes.
+function placePad() {
+  const c = canvas();
+  if (!trackpad() || !c || !rfb) { padEl.hidden = true; return; }
+  const s = stage.getBoundingClientRect(), r = c.getBoundingClientRect();
+  const top = Math.max(0, r.bottom - s.top);
+  padEl.hidden = s.height - top < 90;
+  padEl.style.top = `${top}px`;
+}
+// Move the pointer by a finger movement. Slow = precise, fast flick = far.
+function movePointer(dx, dy, dt) {
+  const c = canvas(), f = fb();
+  if (!c || !f) return;
+  const fitWidth = c.getBoundingClientRect().width / view.z;    // picture width at 1×
+  const v = Math.hypot(dx, dy) / Math.max(dt, 8);                // px per ms
+  const accel = Math.min(2.6, Math.max(0.45, 0.4 + v * 1.1));
+  const k = (f.w / fitWidth) * 0.8 * prefs.speed * accel;
+  ptr.x = Math.max(0, Math.min(f.w - 1, ptr.x + dx * k));
+  ptr.y = Math.max(0, Math.min(f.h - 1, ptr.y + dy * k));
+  // zoomed in: the view follows the pointer
+  if (view.z > 1.05) {
+    const p = ptrClient(), sr = stage.getBoundingClientRect(), pad = 36;
+    if (p) {
+      if (p.x < sr.left + pad) view.x += sr.left + pad - p.x;
+      if (p.x > sr.right - pad) view.x -= p.x - (sr.right - pad);
+      if (p.y < sr.top + pad) view.y += sr.top + pad - p.y;
+      if (p.y > sr.bottom - pad) view.y -= p.y - (sr.bottom - pad);
       layout();
-    } else {
-      wheel(m.x, m.y, (g.lm.x - m.x) * 2.2, (g.lm.y - m.y) * 2.2);
     }
-    g.lm = m;
-    return;
   }
-  if (t.length !== 1) return;
-  const f = t[0];
-  const far = Math.hypot(f.clientX - g.sx, f.clientY - g.sy) > SLOP;
-  if (g.mode === 'pending' && far) {
-    clearTimeout(g.hold);
-    g.mode = view.z > 1.05 ? 'pan' : 'scroll';
-  } else if (g.mode === 'hold' && far) {
-    g.mode = 'drag';
-    mouse('mousemove', g.sx, g.sy);
-    mouse('mousedown', g.sx, g.sy, 1, 0);
-  }
-  if (g.mode === 'pan') {
-    view.x += f.clientX - g.lx;
-    view.y += f.clientY - g.ly;
-    layout();
-  } else if (g.mode === 'scroll') {
-    wheel(f.clientX, f.clientY, (g.lx - f.clientX) * 2.2, (g.ly - f.clientY) * 2.2);
-  } else if (g.mode === 'drag') {
-    mouse('mousemove', f.clientX, f.clientY, 1, 0);
-  }
-  g.lx = f.clientX;
-  g.ly = f.clientY;
+  placeCursor();
 }
-function onEnd(e) {
-  if (!g) return;
-  if (e.touches.length) {
-    // one finger of a two-finger gesture lifted: the gesture is over
-    if (g.mode === 'two' || g.mode === 'pinch' || g.mode === 'scroll2') {
-      if (g.mode === 'two' && Date.now() - g.t0 < 350) { click(g.m0.x, g.m0.y, true); buzz(); }
-      g.mode = 'ignore';
-    }
-    return;
+// Where a click, right-click or scroll lands: the pointer (trackpad) or the finger (touch).
+function here(fallback) { return trackpad() ? ptrClient() || fallback : fallback; }
+
+// ---------- two fingers: the same in both modes ----------
+function twoStart(t) {
+  if (g) { clearTimeout(g.hold); if (g.mode === 'drag' || g.mode === 'tp-drag') { const p = here({ x: g.lx, y: g.ly }); mouse('mouseup', p.x, p.y, 0); } }
+  const m = mid(t[0], t[1]);
+  g = { mode: 'two', d0: dist(t[0], t[1]), z0: view.z, m0: m, lm: m, ox: view.x, oy: view.y, r: stage.getBoundingClientRect(), t0: Date.now() };
+}
+function twoMove(t) {
+  if (t.length < 2) return;
+  const m = mid(t[0], t[1]);
+  const ratio = dist(t[0], t[1]) / g.d0;
+  if (g.mode === 'two') {
+    if (Math.abs(ratio - 1) > 0.12) g.mode = 'pinch';
+    else if (Math.hypot(m.x - g.m0.x, m.y - g.m0.y) > 14) g.mode = 'scroll2';
+    else return;
   }
-  clearTimeout(g.hold);
-  if (g.mode === 'pending') click(g.sx, g.sy);
-  else if (g.mode === 'hold') click(g.sx, g.sy, true);
-  else if (g.mode === 'drag') mouse('mouseup', g.lx, g.ly, 0, 0);
-  else if (g.mode === 'two' && Date.now() - g.t0 < 350) { click(g.m0.x, g.m0.y, true); buzz(); }
+  if (g.mode === 'pinch') {
+    const z = Math.max(1, Math.min(5, g.z0 * ratio));
+    const cx = g.m0.x - g.r.left, cy = g.m0.y - g.r.top;
+    view.z = z;
+    view.x = cx - (cx - g.ox) * (z / g.z0) + (m.x - g.m0.x);
+    view.y = cy - (cy - g.oy) * (z / g.z0) + (m.y - g.m0.y);
+    layout();
+  } else {
+    const p = here(m);
+    wheel(p.x, p.y, (g.lm.x - m.x) * 2.2, (g.lm.y - m.y) * 2.2);
+  }
+  g.lm = m;
+}
+const isTwo = () => g && (g.mode === 'two' || g.mode === 'pinch' || g.mode === 'scroll2');
+function twoTapRightClick() {
+  if (g.mode === 'two' && Date.now() - g.t0 < 350) { const p = here(g.m0); click(p.x, p.y, true); buzz(); }
+}
+
+// ---------- touch mode: tap where you want ----------
+const direct = {
+  start(e) {
+    const t = e.touches;
+    if (t.length === 1) {
+      const f = t[0];
+      g = { mode: 'pending', sx: f.clientX, sy: f.clientY, lx: f.clientX, ly: f.clientY, t0: Date.now() };
+      g.hold = setTimeout(() => { if (g && g.mode === 'pending') { g.mode = 'hold'; buzz(); } }, HOLD_MS);
+    } else if (t.length === 2) twoStart(t);
+    else if (g) g.mode = 'ignore';
+  },
+  move(e) {
+    if (!g) return;
+    const t = e.touches;
+    if (isTwo()) return twoMove(t);
+    if (t.length !== 1) return;
+    const f = t[0];
+    const far = Math.hypot(f.clientX - g.sx, f.clientY - g.sy) > SLOP;
+    if (g.mode === 'pending' && far) {
+      clearTimeout(g.hold);
+      g.mode = view.z > 1.05 ? 'pan' : 'scroll';
+    } else if (g.mode === 'hold' && far) {
+      g.mode = 'drag';
+      mouse('mousemove', g.sx, g.sy);
+      mouse('mousedown', g.sx, g.sy, 1, 0);
+    }
+    if (g.mode === 'pan') { view.x += f.clientX - g.lx; view.y += f.clientY - g.ly; layout(); }
+    else if (g.mode === 'scroll') wheel(f.clientX, f.clientY, (g.lx - f.clientX) * 2.2, (g.ly - f.clientY) * 2.2);
+    else if (g.mode === 'drag') mouse('mousemove', f.clientX, f.clientY, 1, 0);
+    g.lx = f.clientX;
+    g.ly = f.clientY;
+  },
+  end(e) {
+    if (!g) return;
+    if (e.touches.length) { if (isTwo()) { twoTapRightClick(); g.mode = 'ignore'; } return; }
+    clearTimeout(g.hold);
+    if (g.mode === 'pending') click(g.sx, g.sy);
+    else if (g.mode === 'hold') click(g.sx, g.sy, true);
+    else if (g.mode === 'drag') mouse('mouseup', g.lx, g.ly, 0, 0);
+    else twoTapRightClick();
+    g = null;
+    releaseGrab();
+  },
+};
+
+// ---------- trackpad mode: move a pointer, like a laptop ----------
+let lastTapEnd = 0, lastTapAt = null;
+const pad = {
+  start(e) {
+    const t = e.touches;
+    centerPointer();
+    if (t.length === 1) {
+      const f = t[0], now = Date.now();
+      // touching again right after a tap = tap-and-drag
+      const again = now - lastTapEnd < 320 && lastTapAt && Math.hypot(f.clientX - lastTapAt.x, f.clientY - lastTapAt.y) < 60;
+      g = { mode: again ? 'tp-again' : 'tp-pending', sx: f.clientX, sy: f.clientY, lx: f.clientX, ly: f.clientY, lt: now, t0: now };
+    } else if (t.length === 2) twoStart(t);
+    else if (g) g.mode = 'ignore';
+  },
+  move(e) {
+    if (!g) return;
+    const t = e.touches;
+    if (isTwo()) return twoMove(t);
+    if (t.length !== 1) return;
+    const f = t[0], now = Date.now();
+    const far = Math.hypot(f.clientX - g.sx, f.clientY - g.sy) > SLOP;
+    if (g.mode === 'tp-pending' && far) g.mode = 'tp-move';
+    else if (g.mode === 'tp-again' && far) {
+      g.mode = 'tp-drag';
+      const p = ptrClient();
+      if (p) { mouse('mousemove', p.x, p.y); mouse('mousedown', p.x, p.y, 1, 0); buzz(); }
+    }
+    if (g.mode === 'tp-move' || g.mode === 'tp-drag') {
+      movePointer(f.clientX - g.lx, f.clientY - g.ly, now - g.lt);
+      const p = ptrClient();
+      if (p) mouse('mousemove', p.x, p.y, g.mode === 'tp-drag' ? 1 : 0, 0);
+    }
+    g.lx = f.clientX;
+    g.ly = f.clientY;
+    g.lt = now;
+  },
+  end(e) {
+    if (!g) return;
+    if (e.touches.length) { if (isTwo()) { twoTapRightClick(); g.mode = 'ignore'; } return; }
+    const p = ptrClient();
+    const quick = Date.now() - g.t0 < 300;
+    if (g.mode === 'tp-pending' && quick && p) {
+      click(p.x, p.y);
+      lastTapEnd = Date.now();
+      lastTapAt = { x: g.sx, y: g.sy };
+    } else if (g.mode === 'tp-again' && p) {
+      click(p.x, p.y);          // second tap = double-click
+      lastTapEnd = 0;
+    } else if (g.mode === 'tp-drag' && p) {
+      mouse('mouseup', p.x, p.y, 0, 0);
+      lastTapEnd = 0;
+    } else twoTapRightClick();
+    g = null;
+    releaseGrab();
+  },
+};
+
+const handler = () => (trackpad() ? pad : direct);
+// Capture before noVNC so its own gestures never see these touches.
+const swallow = (fn) => (e) => { e.preventDefault(); e.stopPropagation(); fn(e); };
+stage.addEventListener('touchstart', swallow((e) => handler().start(e)), { capture: true, passive: false });
+stage.addEventListener('touchmove', swallow((e) => handler().move(e)), { capture: true, passive: false });
+stage.addEventListener('touchend', swallow((e) => handler().end(e)), { capture: true, passive: false });
+stage.addEventListener('touchcancel', swallow(() => {
+  if (g && (g.mode === 'drag' || g.mode === 'tp-drag')) { const p = here({ x: g.lx, y: g.ly }); mouse('mouseup', p.x, p.y, 0); }
+  if (g) clearTimeout(g.hold);
   g = null;
   releaseGrab();
-}
-// Capture before noVNC so its own (trackpad-style) gestures never see these touches.
-const swallow = (fn) => (e) => { e.preventDefault(); e.stopPropagation(); fn(e); };
-stage.addEventListener('touchstart', swallow(onStart), { capture: true, passive: false });
-stage.addEventListener('touchmove', swallow(onMove), { capture: true, passive: false });
-stage.addEventListener('touchend', swallow(onEnd), { capture: true, passive: false });
-stage.addEventListener('touchcancel', swallow((e) => { if (g && g.mode === 'drag') mouse('mouseup', g.lx, g.ly, 0); clearTimeout(g && g.hold); g = null; }), { capture: true, passive: false });
+}), { capture: true, passive: false });
 for (const t of ['gesturestart', 'gesturechange', 'gestureend']) stage.addEventListener(t, (e) => { e.preventDefault(); e.stopPropagation(); }, { capture: true });
+
+// ---------- settings ----------
+const prefsEl = $('#scPrefs');
+const NOTES = {
+  trackpad: 'Your thumb moves a pointer, like a laptop trackpad. Tap to click. Tap, then touch again and drag to drag. Two fingers scroll, or tap with two fingers to right-click. Pinch to zoom.',
+  touch: 'Tap exactly where you want. Long-press to right-click, long-press and drag to drag. Two fingers scroll. Pinch to zoom; one finger pans while zoomed.',
+};
+function renderPrefs() {
+  prefsEl.querySelectorAll('[data-pref]').forEach((seg) => {
+    seg.querySelectorAll('button').forEach((b) => b.classList.toggle('on', String(prefs[seg.dataset.pref]) === b.dataset.v));
+  });
+  $('#scModeNote').textContent = NOTES[prefs.mode];
+  $('#scSpeedRow').hidden = prefs.mode !== 'trackpad';
+  placePad();
+  placeCursor();
+}
+prefsEl.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-pref] button');
+  if (!b) return;
+  const key = b.closest('[data-pref]').dataset.pref;
+  prefs[key] = key === 'speed' ? Number(b.dataset.v) : b.dataset.v;
+  savePrefs();
+  g = null;
+  renderPrefs();
+});
+$('#scSettings').addEventListener('click', (e) => {
+  e.stopPropagation();
+  prefsEl.hidden = !prefsEl.hidden;
+  $('#scSettings').classList.toggle('on', !prefsEl.hidden);
+});
+document.addEventListener('click', (e) => {
+  if (!prefsEl.hidden && !prefsEl.contains(e.target) && e.target.id !== 'scSettings') { prefsEl.hidden = true; $('#scSettings').classList.remove('on'); }
+});
+renderPrefs();
+
+// Start-up, after everything above exists.
+new ResizeObserver(() => { layout(); keepTapVisible(); }).observe(stage);
+// noVNC resizes the picture on its own schedule (after ours, on rotation or
+// connect). Watch for it, then re-place the pad and pointer and re-clamp.
+let lastCanvasSize = '';
+new MutationObserver(() => {
+  const c = canvas();
+  const size = c ? `${c.style.width}x${c.style.height}` : '';
+  if (size === lastCanvasSize) { placePad(); placeCursor(); return; }
+  lastCanvasSize = size;
+  requestAnimationFrame(() => { layout(); keepTapVisible(); });
+}).observe(surface, { subtree: true, childList: true, attributes: true, attributeFilter: ['style'] });
+layout();
+// Opened straight onto the screen (a reload, or the phone reopening the app
+// where you left it): app.js showed it before this module loaded, so start now.
+if (!$('#screenView').hidden && !wanted) { wanted = true; retry = 0; connect(); }

@@ -77,6 +77,23 @@
       <span id="scStatus" class="sc-status">connecting…</span>
       <button id="scZoom" class="sc-btn" aria-pressed="false">zoom</button>
       <button id="scNext" class="sc-btn" title="Next monitor" aria-label="Next monitor">&#xf037a;</button>
+      <button id="scSettings" class="sc-btn" title="Settings" aria-label="Screen settings">&#xf013;</button>
+    </div>
+    <div id="scPrefs" class="sc-prefs" hidden>
+      <div class="sc-prefs-title">Control</div>
+      <div class="sc-seg" data-pref="mode">
+        <button data-v="trackpad">Trackpad</button>
+        <button data-v="touch">Touch</button>
+      </div>
+      <p id="scModeNote" class="sc-prefs-note"></p>
+      <div id="scSpeedRow">
+        <div class="sc-prefs-title">Pointer speed</div>
+        <div class="sc-seg" data-pref="speed">
+          <button data-v="0.6">Slow</button>
+          <button data-v="1">Normal</button>
+          <button data-v="1.6">Fast</button>
+        </div>
+      </div>
     </div>
     <div id="scStage" class="sc-stage"></div>
     <div id="scMsg" class="sc-msg" hidden></div>

@@ -40,9 +40,11 @@ To remove only the plugin and keep your pairing: `omarchy plugin remove io.githu
 - **Your desktop, on your phone.** A home screen built the way Omarchy builds your desktop: your actual wallpaper, square windows with your theme's border (gradients too), and the same top bar, read from your own bar layout, with Omarchy's own icons. Widgets sit at the bottom near your thumb: a big clock, CPU, memory, disk, battery, and a live preview of your terminal.
 - **The real Omarchy menu.** Tap the Omarchy logo for the same menu the logo opens on your desktop, built by Omarchy's own menu code from your menu file and extensions, with the same checkmarks. Pick something and it runs on your computer, just like clicking it there. Logout, reboot, shutdown, suspend and hibernate ask first.
 - **Your screen, made for touch.** Tap the desktop widget, or launch anything from the menu (Install, Update, an app), and Takeout switches to your computer's live screen so you can finish it from wherever you are:
-  - **tap** clicks exactly where your finger is, **double-tap** double-clicks
-  - **long-press** or **two-finger tap** right-clicks, **long-press and drag** drags windows or selects text
-  - **two-finger drag** scrolls, **pinch** zooms the view up to 5× (one finger pans while zoomed)
+  - your screen sits at the **top**, with a **trackpad** under it, so you can drive it one-handed with your thumb
+  - **Trackpad mode** (default): slide your thumb to move the pointer like a laptop trackpad (faster flicks go farther), **tap** to click, **tap then drag** to drag, **two-finger tap** to right-click
+  - **Touch mode**: **tap** clicks exactly where your finger is, **long-press** right-clicks, **long-press and drag** drags
+  - in both, **two-finger drag** scrolls and **pinch** zooms the view up to 5×
+  - the **⚙ settings** button switches between Trackpad and Touch and sets pointer speed; your phone remembers your choice
   - a **type** button for your phone's keyboard, sticky **super / ctrl / alt / shift**, esc, tab, arrows, and one-tap **Omarchy menu** (Super+Space), **terminal** and **close**
   - turn your phone sideways for a bigger screen; **next monitor** if you have several
 - **Workspaces.** Tap a workspace in the bar to switch your desktop to it.
@@ -91,7 +93,7 @@ To listen on just one address, set `TAKEOUT_HOST` or put the address in `~/.conf
 
 - **Terminal:** a tmux session named `takeout`. Input goes in with `tmux send-keys`, and the screen comes back from `tmux capture-pane`, pushed to your phone over Server-Sent Events as small diffs. This engine comes from [TouchWorkstation](https://touchworkstation.com).
 - **Theme, bar and menu:** read live from Omarchy itself: `omarchy-theme-color` for colors, your `shell.json` bar layout, and Omarchy's own `MenuModel.js` for the menu.
-- **Screen:** [wayvnc](https://github.com/any1/wayvnc) captures your Hyprland output; the phone draws it with [noVNC](https://github.com/novnc/noVNC) (vendored in `public/vendor/novnc`, MPL-2.0), with Takeout's own direct-touch gestures and zoom on top.
+- **Screen:** [wayvnc](https://github.com/any1/wayvnc) captures your Hyprland output; the phone draws it with [noVNC](https://github.com/novnc/noVNC) (vendored in `public/vendor/novnc`, MPL-2.0), with Takeout's own trackpad and touch gestures and zoom on top.
 - **Plugin:** `Service.qml` keeps the server running inside the Omarchy shell and restarts it if it stops.
 
 Not on Omarchy's plugin system? Clone this repo and run `./install.sh` to set it up as a systemd user service instead.

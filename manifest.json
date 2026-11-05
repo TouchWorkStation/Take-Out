@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "io.github.touchworkstation.takeout",
   "name": "Takeout",
-  "version": "0.7.1",
+  "version": "0.8.0",
   "author": "Chris Jordan",
   "description": "Your Omarchy desktop on your phone: a themed terminal, home screen, bar and menu",
   "kinds": [

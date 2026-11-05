@@ -1,6 +1,6 @@
 {
   "name": "takeout",
-  "version": "0.7.1",
+  "version": "0.8.0",
   "description": "Your Omarchy terminal, to go. A self-hosted phone terminal that wears your Omarchy theme.",
   "main": "server.js",
   "scripts": {
