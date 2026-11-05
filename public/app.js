@@ -196,8 +196,6 @@
     $('#themeName').textContent = pretty(theme.name);
     set('--win-border', borderImage(c.hyprland_active_border, c.accent));
     setWallpaper(theme);
-    $('#homeTheme').textContent = pretty(theme.name);
-    $('#palette').replaceChildren(...ansi.map((col) => { const i = document.createElement('i'); i.style.background = col; return i; }));
     loadFont(theme);
 
     const changed = current && current.name !== theme.name;
@@ -465,11 +463,6 @@
   $('#peekWin').addEventListener('click', () => show('terminal'));
   $('#peekWin').addEventListener('keydown', (e) => { if (e.key === 'Enter') show('terminal'); });
   $('#homeBtn').addEventListener('click', () => (history.state && history.state.view === 'terminal' ? history.back() : show('home')));
-  $('#homeThemes').addEventListener('click', openSheet);
-  $('#nextBg').addEventListener('click', async () => {
-    const r = await post('/api/background/next').catch(() => null);
-    toast(r && r.ok ? 'next wallpaper' : 'can’t change wallpaper here');
-  });
 
   tickClock();
   setInterval(tickClock, 1000);

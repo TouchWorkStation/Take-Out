@@ -264,15 +264,6 @@ dialog#sheet::backdrop { background: rgba(0, 0, 0, .45); }
 .om-peek > div { min-height: 1.05rem; }
 .om-open { margin-top: 8px; color: var(--accent); text-align: right; }
 
-.om-theme-name { font: 600 20px var(--mono); color: var(--accent); }
-.om-palette { display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; margin: 12px 0 14px; }
-.om-palette i { display: block; aspect-ratio: 1.6; }
-.om-actions { display: flex; gap: 8px; }
-.om-actions button {
-  flex: 1; padding: 10px 8px; border: 1px solid color-mix(in srgb, var(--fg) 18%, transparent);
-  background: transparent; color: var(--fg); font: 12px var(--mono);
-}
-.om-actions button:active { background: color-mix(in srgb, var(--accent) 25%, transparent); }
 
 /* Back to home from the terminal. */
 .mt-home { border: 0; background: transparent; color: var(--accent); font: 12px var(--mono); padding: 4px 6px 4px 0; }
