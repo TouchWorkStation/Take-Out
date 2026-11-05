@@ -1,11 +1,13 @@
 {
   "schemaVersion": 1,
-  "id": "takeout",
+  "id": "io.github.touchworkstation.takeout",
   "name": "Takeout",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "author": "Chris Jordan",
-  "description": "Your Omarchy terminal, to go — a phone terminal that wears your theme",
-  "kinds": ["service"],
+  "description": "Your Omarchy desktop on your phone: a themed terminal, home screen, bar and menu",
+  "kinds": [
+    "service"
+  ],
   "entryPoints": {
     "service": "Service.qml"
   },

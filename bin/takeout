@@ -25,6 +25,7 @@ usage() {
   takeout firewall   Let your phone through Omarchy's firewall (home network only)
   takeout restart    Restart the server (your session keeps running)
   takeout reset      New pairing token — unpairs every device
+  takeout uninstall  Remove Takeout and everything it added
 EOF
 }
 
@@ -115,6 +116,28 @@ case "${1:-}" in
     sleep 2
     echo "New token made — every device needs to pair again."
     "$0" pair
+    ;;
+  uninstall)
+    # Everything Takeout added, and nothing else.
+    port=$(pair_url); port=${port#http://*:}; port=${port%%/*}
+    if command -v ufw >/dev/null 2>&1 && { sudo -n true 2>/dev/null || [[ -t 0 ]]; }; then
+      for rule in $(sudo ufw status numbered 2>/dev/null | grep -i "takeout" | grep -o '^\[ *[0-9]*\]' | tr -d '[] ' | sort -rn); do
+        sudo ufw --force delete "$rule" >/dev/null
+      done
+    fi
+    tmux kill-session -t takeout 2>/dev/null || true
+    [[ $(readlink "$HOME/.local/bin/takeout") == "$DIR/bin/takeout" ]] && rm -f "$HOME/.local/bin/takeout"
+    rm -rf "${XDG_CONFIG_HOME:-$HOME/.config}/takeout" "${XDG_CACHE_HOME:-$HOME/.cache}/takeout"
+    if [[ -f $UNIT ]]; then
+      systemctl --user disable --now takeout.service 2>/dev/null || true
+      rm -f "$UNIT"
+      rm -rf "$HOME/.local/share/takeout"
+    fi
+    if is_plugin; then
+      id=$(basename "$DIR")
+      omarchy-plugin-remove "$id" --yes >/dev/null 2>&1 || rm -rf "$DIR"
+    fi
+    echo "🥡 Takeout is removed — firewall rules, session, settings and all."
     ;;
   serve) exec bash "$DIR/start.sh" ;;
   -v|--version) "$(node_bin)" -e "console.log(require('$DIR/package.json').version)" ;;

@@ -9,7 +9,7 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # clobber some other command that already owns the name.
 mkdir -p "$HOME/.local/bin"
 link="$HOME/.local/bin/takeout"
-if [[ ! -e $link && ! -L $link ]] || [[ $(readlink "$link") == */takeout/bin/takeout ]]; then
+if [[ ! -e $link && ! -L $link ]] || [[ $(readlink "$link") == */bin/takeout && $(readlink "$link") == *takeout* ]]; then
   ln -sfn "$DIR/bin/takeout" "$link"
 fi
 

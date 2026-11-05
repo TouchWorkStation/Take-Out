@@ -1,15 +1,15 @@
 #!/bin/bash
 # 🥡 Takeout installer
 #
-#   curl -fsSL https://raw.githubusercontent.com/TouchWorkStation/Take-Out/main/install.sh | bash
-#
 # On Omarchy it installs Takeout as an Omarchy plugin. On other Linux it
 # installs a systemd user service instead. Either way it ends by printing the
 # link to pair your phone.
 set -euo pipefail
 
 REPO="${TAKEOUT_REPO:-https://github.com/TouchWorkStation/Take-Out}"
-PLUGIN_DIR="$HOME/.config/omarchy/plugins/takeout"
+PLUGIN_ID="io.github.touchworkstation.takeout"
+PLUGIN_DIR="$HOME/.config/omarchy/plugins/$PLUGIN_ID"
+OLD_PLUGIN_DIR="$HOME/.config/omarchy/plugins/takeout"
 SERVICE_DIR="$HOME/.local/share/takeout"
 UNIT="$HOME/.config/systemd/user/takeout.service"
 
@@ -77,10 +77,17 @@ offer_vpn() {
 
 # ---------- Omarchy: install as a plugin ----------
 if command -v omarchy-plugin-add >/dev/null 2>&1; then
+  # Early versions installed under the plain id "takeout". Your pairing token,
+  # settings and terminal session are kept; only the plugin folder moves.
+  if [[ -d $OLD_PLUGIN_DIR && ! -d $PLUGIN_DIR ]]; then
+    say "Moving Takeout to its marketplace id…"
+    omarchy-plugin-remove takeout --yes >/dev/null 2>&1 || rm -rf "$OLD_PLUGIN_DIR"
+    pkill -f "$OLD_PLUGIN_DIR/server.js" 2>/dev/null || true
+  fi
   if [[ -d $PLUGIN_DIR ]]; then
     say "Takeout is already installed — updating it…"
-    omarchy-plugin-update takeout --yes >/dev/null 2>&1 || git -C "$PLUGIN_DIR" pull --ff-only --quiet || true
-    omarchy-plugin-enable takeout >/dev/null 2>&1 || true
+    omarchy-plugin-update "$PLUGIN_ID" --yes >/dev/null 2>&1 || git -C "$PLUGIN_DIR" pull --ff-only --quiet || true
+    omarchy-plugin-enable "$PLUGIN_ID" >/dev/null 2>&1 || true
     bash "$PLUGIN_DIR/bin/takeout" restart >/dev/null 2>&1 || true
   else
     say "Installing Takeout as an Omarchy plugin…"
