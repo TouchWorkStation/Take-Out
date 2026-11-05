@@ -218,7 +218,7 @@ dialog#sheet::backdrop { background: rgba(0, 0, 0, .45); }
 .om-bar.see-through { background: transparent; }
 .om-sec { display: flex; align-items: center; gap: 0; min-width: 0; white-space: nowrap; }
 .om-left { justify-content: flex-start; }
-.om-center { justify-content: center; gap: 2px; }
+.om-center { justify-content: center; gap: 2px; padding: 0 8px; }
 .om-right { justify-content: flex-end; }
 .om-w {
   display: inline-flex; align-items: center; justify-content: center;
@@ -302,7 +302,10 @@ dialog#sheet::backdrop { background: rgba(0, 0, 0, .45); }
 
 /* Widgets sit at the bottom, near your thumb; the wallpaper shows above them. */
 .om-scroll { display: flex; flex-direction: column; }
-.om-grid { margin-top: auto; width: 100%; }
+.om-grid { flex: 1; width: 100%; display: flex; flex-direction: column; }
+/* Clock up top; everything else at the bottom near your thumb. */
+.om-grid > .om-win { flex: none; }
+.om-spacer { flex: 1; min-height: 4px; }
 .om-sys { cursor: pointer; }
 .om-sys:active, .om-term:active { background: color-mix(in srgb, var(--bg) 92%, var(--accent)); }
 .om-sys .om-open { margin-top: 0; }
@@ -367,3 +370,62 @@ dialog#sheet::backdrop { background: rgba(0, 0, 0, .45); }
 .om-menu-more { color: var(--muted); font-size: 16px; }
 .om-menu-row:active .om-menu-more { color: var(--bg); }
 .om-menu-note { color: var(--muted); font-size: 12px; padding: 14px 12px; }
+
+/* Desktop widget: a live still of your screen. */
+.om-desk { cursor: pointer; }
+.om-desk:active { background: color-mix(in srgb, var(--bg) 92%, var(--accent)); }
+.om-desk-shot { position: relative; aspect-ratio: 16 / 9; max-height: 22vh; width: 100%; overflow: hidden; background: color-mix(in srgb, var(--fg) 6%, transparent); }
+.om-desk-shot img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity .4s; }
+.om-desk.has-thumb .om-desk-shot img { opacity: 1; }
+.om-desk-empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); font-size: 11px; }
+.om-desk.has-thumb .om-desk-empty { display: none; }
+.om-desk .om-open { margin-top: 8px; }
+.om-peek { height: 8em !important; }
+
+/* ===================== Screen: your computer, made for touch ===================== */
+.sc-root[hidden] { display: none !important; }
+html.screen, html.screen body { background: #000; }
+.sc-root {
+  position: fixed; inset: 0; z-index: 5; display: flex; flex-direction: column;
+  background: #000; color: var(--fg); font-family: var(--mono);
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+.sc-top { display: flex; align-items: center; gap: 6px; height: 40px; padding: 0 8px; background: var(--bg); flex: none; }
+.sc-btn { border: 0; background: transparent; color: var(--fg); font: 12px var(--mono); padding: 8px 8px; min-height: 36px; }
+.sc-btn.on { color: var(--bg); background: var(--accent); }
+.sc-home { color: var(--accent); }
+.sc-status { flex: 1; text-align: center; color: var(--muted); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sc-status.ok { color: var(--c2); }
+.sc-status.ok::before { content: "● "; }
+.sc-status.bad { color: var(--c3); }
+.sc-stage { position: relative; flex: 1; min-height: 0; overflow: hidden; touch-action: none; background: #000; }
+.sc-surface { position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
+.sc-stage canvas { touch-action: none; -webkit-user-select: none; user-select: none; }
+.sc-msg[hidden] { display: none; }
+.sc-msg {
+  position: absolute; left: 16px; right: 16px; top: 34%; z-index: 2; padding: 18px 16px;
+  background: var(--bg); border: 2px solid transparent; border-image: var(--win-border);
+  font-size: 13px; line-height: 1.5;
+}
+.sc-msg p { margin: 0 0 12px; }
+.sc-fine { color: var(--muted); font-size: 11.5px; }
+.sc-cta { width: 100%; padding: 12px; margin: 0 0 12px; border: 0; background: var(--accent); color: var(--bg); font: 600 13px var(--mono); }
+.sc-kbd-input { position: absolute; left: -9999px; top: 50%; width: 10px; height: 10px; opacity: 0; font-size: 16px; }
+.sc-keys {
+  display: flex; gap: 4px; flex: none; padding: 6px 6px calc(6px + env(safe-area-inset-bottom) * 0);
+  overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; background: var(--bg);
+}
+.sc-keys::-webkit-scrollbar { display: none; }
+.sc-key {
+  flex: none; min-width: 44px; height: 42px; padding: 0 11px; border: 1px solid color-mix(in srgb, var(--fg) 14%, transparent);
+  background: color-mix(in srgb, var(--fg) 6%, var(--bg)); color: var(--fg); font: 12px var(--mono); touch-action: manipulation;
+}
+.sc-key:active { background: color-mix(in srgb, var(--accent) 35%, var(--bg)); }
+.sc-key.on { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+.sc-kbd-btn { color: var(--accent); }
+.sc-logo-key { font-family: OmarchyLogo, var(--mono); font-size: 16px; }
+@media (orientation: landscape) and (max-height: 500px) {
+  .sc-top { height: 32px; }
+  .sc-btn { min-height: 30px; padding: 4px 8px; }
+  .sc-key { height: 34px; }
+}

@@ -643,7 +643,194 @@ function runMenuItem(id) {
   child.on('error', () => {});
   child.unref();
   guardCache.at = 0; // checkmarks may have changed
-  return { ok: true, label: e.label };
+  // Does this open something on screen (a terminal, an installer, an app)?
+  const opensWindow = /omarchy-launch-|xdg-terminal-exec|omarchy-pkg-(install|remove|aur-install)|omarchy-menu\b|walker|xdg-open|-tui\b/.test(command);
+  return { ok: true, label: e.label, opensWindow };
+}
+
+// ---------- the screen ----------
+// Your computer's live screen on the phone. wayvnc (made for Hyprland and
+// other wlroots desktops) starts only while a phone is looking, listens on a
+// private Unix socket in your runtime dir (never on the network), and Takeout
+// bridges it to the phone through its own authenticated WebSocket.
+const net = require('net');
+const RUNTIME = process.env.XDG_RUNTIME_DIR || path.join(os.tmpdir(), `takeout-${process.getuid ? process.getuid() : 'u'}`);
+const SCREEN_DIR = path.join(RUNTIME, 'takeout');
+const VNC_SOCK = process.env.TAKEOUT_VNC_SOCKET || path.join(SCREEN_DIR, 'vnc.sock');
+const VNC_CTL = path.join(SCREEN_DIR, 'wayvncctl.sock');
+const EXTERNAL_VNC = !!process.env.TAKEOUT_VNC_SOCKET; // tests / bring-your-own VNC server
+let vnc = { proc: null, starting: null, clients: 0, idleTimer: null, output: null };
+
+function waylandEnv() {
+  const env = { ...ENV };
+  if (!env.WAYLAND_DISPLAY) {
+    try {
+      const s = fs.readdirSync(RUNTIME).find((f) => /^wayland-\d+$/.test(f));
+      if (s) env.WAYLAND_DISPLAY = s;
+    } catch {}
+  }
+  if (!env.XDG_RUNTIME_DIR) env.XDG_RUNTIME_DIR = RUNTIME;
+  return env;
+}
+async function focusedOutput() {
+  try {
+    const mons = JSON.parse(await run('hyprctl', ['-j', 'monitors']));
+    const m = mons.find((x) => x.focused) || mons[0];
+    return m ? m.name : null;
+  } catch { return null; }
+}
+function screenStatus() {
+  if (EXTERNAL_VNC) return { available: true };
+  if (!has('wayvnc')) return { available: false, reason: 'wayvnc' };
+  if (!waylandEnv().WAYLAND_DISPLAY) return { available: false, reason: 'wayland' };
+  return { available: true };
+}
+function waitForSocket(file, ms) {
+  return new Promise((resolve, reject) => {
+    const until = Date.now() + ms;
+    (function poll() {
+      const s = net.connect(file);
+      s.once('connect', () => { s.destroy(); resolve(); });
+      s.once('error', () => (Date.now() > until ? reject(new Error('screen server did not start')) : setTimeout(poll, 150)));
+    })();
+  });
+}
+function startVnc() {
+  if (EXTERNAL_VNC) return Promise.resolve();
+  if (vnc.proc) return Promise.resolve();
+  if (vnc.starting) return vnc.starting;
+  vnc.starting = (async () => {
+    fs.mkdirSync(SCREEN_DIR, { recursive: true, mode: 0o700 });
+    try { fs.chmodSync(SCREEN_DIR, 0o700); } catch {}
+    for (const f of [VNC_SOCK, VNC_CTL]) { try { fs.unlinkSync(f); } catch {} }
+    vnc.output = await focusedOutput();
+    const args = ['--render-cursor', '--max-fps=24', '-S', VNC_CTL];
+    if (vnc.output) args.push('-o', vnc.output);
+    args.push(`unix:${VNC_SOCK}`);
+    const p = spawn('wayvnc', args, { env: waylandEnv(), stdio: ['ignore', 'ignore', 'pipe'] });
+    let err = '';
+    p.stderr.on('data', (d) => { err = (err + d).slice(-600); });
+    p.on('exit', (code) => {
+      if (vnc.proc === p) vnc.proc = null;
+      if (code) console.log(`[takeout] screen server stopped (${code}): ${err.trim().split('\n').pop() || ''}`);
+    });
+    vnc.proc = p;
+    try { await waitForSocket(VNC_SOCK, 6000); }
+    catch (e) { try { p.kill(); } catch {} vnc.proc = null; throw new Error(err.trim().split('\n').pop() || e.message); }
+    console.log(`[takeout] screen sharing on ${vnc.output || 'default output'} (local socket only)`);
+  })().finally(() => { vnc.starting = null; });
+  return vnc.starting;
+}
+function stopVncSoon() {
+  clearTimeout(vnc.idleTimer);
+  vnc.idleTimer = setTimeout(() => {
+    if (vnc.clients === 0 && vnc.proc) { vnc.proc.kill(); vnc.proc = null; console.log('[takeout] screen sharing stopped (no one watching)'); }
+  }, 45000);
+}
+
+// A minimal WebSocket server (RFC 6455) — just enough to carry VNC bytes.
+function wsAccept(req, socket) {
+  const key = req.headers['sec-websocket-key'];
+  if (!key || (req.headers.upgrade || '').toLowerCase() !== 'websocket') return false;
+  const accept = crypto.createHash('sha1').update(key + '258EAFA5-E914-47DA-95CA-C5AB0DC85B11').digest('base64');
+  const proto = (req.headers['sec-websocket-protocol'] || '').split(',').map((s) => s.trim()).filter(Boolean);
+  socket.write(['HTTP/1.1 101 Switching Protocols', 'Upgrade: websocket', 'Connection: Upgrade',
+    `Sec-WebSocket-Accept: ${accept}`, ...(proto.includes('binary') ? ['Sec-WebSocket-Protocol: binary'] : []), '', ''].join('\r\n'));
+  return true;
+}
+function wsFrame(opcode, payload) {
+  const len = payload.length;
+  const head = len < 126 ? Buffer.from([0x80 | opcode, len])
+    : len < 65536 ? Buffer.from([0x80 | opcode, 126, len >> 8, len & 255])
+    : (() => { const b = Buffer.alloc(10); b[0] = 0x80 | opcode; b[1] = 127; b.writeBigUInt64BE(BigInt(len), 2); return b; })();
+  return Buffer.concat([head, payload]);
+}
+function wsBridge(socket, head, target) {
+  let buf = head && head.length ? Buffer.from(head) : Buffer.alloc(0);
+  let closed = false;
+  const close = () => {
+    if (closed) return;
+    closed = true;
+    try { socket.end(wsFrame(0x8, Buffer.alloc(0))); } catch {}
+    target.destroy();
+    vnc.clients = Math.max(0, vnc.clients - 1);
+    stopVncSoon();
+  };
+  // VNC → phone, with backpressure so a slow phone network can't balloon memory.
+  target.on('data', (d) => { if (!socket.write(wsFrame(0x2, d))) { target.pause(); socket.once('drain', () => target.resume()); } });
+  target.on('close', close);
+  target.on('error', close);
+  socket.on('close', close);
+  socket.on('error', close);
+  // phone → VNC
+  const parse = () => {
+    while (buf.length >= 2) {
+      const op = buf[0] & 0x0f;
+      const masked = buf[1] & 0x80;
+      let len = buf[1] & 0x7f;
+      let off = 2;
+      if (len === 126) { if (buf.length < 4) return; len = buf.readUInt16BE(2); off = 4; }
+      else if (len === 127) { if (buf.length < 10) return; len = Number(buf.readBigUInt64BE(2)); off = 10; }
+      if (len > 16 << 20 || !masked) return close(); // clients must mask; nothing legit is this big
+      if (buf.length < off + 4 + len) return;
+      const mask = buf.subarray(off, off + 4);
+      const data = Buffer.from(buf.subarray(off + 4, off + 4 + len));
+      for (let i = 0; i < data.length; i++) data[i] ^= mask[i & 3];
+      buf = buf.subarray(off + 4 + len);
+      if (op === 0x2 || op === 0x0) target.write(data);
+      else if (op === 0x8) return close();
+      else if (op === 0x9) socket.write(wsFrame(0xA, data));
+    }
+  };
+  socket.on('data', (d) => { buf = buf.length ? Buffer.concat([buf, d]) : d; parse(); });
+  parse();
+}
+function screenUpgrade(req, socket, head) {
+  const st = screenStatus();
+  if (!st.available) { socket.write('HTTP/1.1 503 Service Unavailable\r\n\r\n'); return socket.destroy(); }
+  socket.pause();
+  startVnc().then(() => {
+    if (!wsAccept(req, socket)) return socket.destroy();
+    const target = net.connect(VNC_SOCK);
+    target.once('connect', () => {
+      vnc.clients++;
+      clearTimeout(vnc.idleTimer);
+      socket.setNoDelay(true);
+      wsBridge(socket, head, target);
+      socket.resume();
+    });
+    target.once('error', () => socket.destroy());
+  }, (e) => {
+    console.log(`[takeout] screen: ${e.message}`);
+    socket.write('HTTP/1.1 502 Bad Gateway\r\n\r\n');
+    socket.destroy();
+  });
+}
+async function nextOutput() {
+  if (!vnc.proc) return false;
+  try { await run('wayvncctl', ['-S', VNC_CTL, 'output-cycle'], { env: waylandEnv(), timeout: 3000 }); return true; }
+  catch { return false; }
+}
+
+// A small, cached still of the screen for the home widget.
+let thumb = { at: 0, data: null, pending: null };
+function screenThumb() {
+  if (Date.now() - thumb.at < 4000 && thumb.data) return Promise.resolve(thumb.data);
+  if (thumb.pending) return thumb.pending;
+  if (!has('grim')) return Promise.resolve(null);
+  thumb.pending = (async () => {
+    const out = await focusedOutput();
+    const args = ['-s', '0.35', '-t', 'jpeg', '-q', '70'];
+    if (out) args.push('-o', out);
+    args.push('-');
+    return new Promise((resolve) => {
+      execFile('grim', args, { env: waylandEnv(), encoding: 'buffer', maxBuffer: 16 << 20, timeout: 4000 }, (err, data) => {
+        if (!err && data && data.length) { thumb = { at: Date.now(), data, pending: null }; resolve(data); }
+        else { thumb.pending = null; resolve(thumb.data); }
+      });
+    });
+  })().finally(() => { thumb.pending = null; });
+  return thumb.pending;
 }
 
 function omarchyFontPath() {
@@ -802,7 +989,7 @@ const server = http.createServer((req, res) => {
   if (!authed(req)) return p === '/' ? sendFile(res, path.join(PUBLIC, 'login.html')) : send(res, 401, 'unauthorized');
 
   if (p === '/') return sendFile(res, path.join(PUBLIC, 'index.html'));
-  if (p === '/app.js' || p === '/app.css' || p === '/ansi.js') return sendFile(res, path.join(PUBLIC, p.slice(1)));
+  if (p === '/app.js' || p === '/app.css' || p === '/ansi.js' || p === '/screen.js') return sendFile(res, path.join(PUBLIC, p.slice(1)));
 
   if (p === '/api/stream') {
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
@@ -876,6 +1063,21 @@ const server = http.createServer((req, res) => {
     return phoneWallpaper(bg).then((file) => sendRange(req, res, file));
   }
   if (p === '/api/home') return homeData().then((d) => json(res, d));
+  if (p === '/api/screen') return json(res, screenStatus());
+  if (p === '/api/screen/thumb') {
+    return screenThumb().then((d) => d ? send(res, 200, d, 'image/jpeg') : send(res, 404, 'none'));
+  }
+  if (p === '/api/screen/next' && req.method === 'POST') {
+    if (!sameOrigin(req)) return send(res, 403, 'forbidden');
+    return nextOutput().then((ok) => json(res, { ok }));
+  }
+  if (p.startsWith('/vendor/novnc/')) {
+    // noVNC (MPL-2.0), vendored so Takeout keeps zero npm dependencies.
+    const base = path.join(__dirname, 'public', 'vendor', 'novnc');
+    const file = path.normalize(path.join(base, p.slice('/vendor/novnc/'.length)));
+    if (!file.startsWith(base + path.sep) || !/\.js$/.test(file)) return send(res, 404, 'not found');
+    return sendFile(res, file, { 'Cache-Control': 'private, max-age=86400' });
+  }
   if (p === '/api/menu') {
     return menuView(url.searchParams.get('id') || 'root').then((m) => m ? json(res, m) : json(res, { error: 'menu unavailable' }, 404));
   }
@@ -912,6 +1114,17 @@ const server = http.createServer((req, res) => {
   }
   send(res, 404, 'not found');
 });
+
+server.on('upgrade', (req, socket, head) => {
+  const p = new URL(req.url, 'http://x').pathname;
+  if (p !== '/ws/screen' || !authed(req) || !sameOrigin(req)) {
+    socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+    return socket.destroy();
+  }
+  screenUpgrade(req, socket, head);
+});
+process.on('exit', () => { if (vnc.proc) try { vnc.proc.kill(); } catch {} });
+for (const sig of ['SIGTERM', 'SIGINT']) process.on(sig, () => process.exit(0));
 
 server.listen(PORT, HOST, () => {
   { const bg = backgroundPath(); if (bg) phoneWallpaper(bg); }

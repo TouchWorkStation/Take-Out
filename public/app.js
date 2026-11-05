@@ -582,9 +582,12 @@
     b.classList.add('busy');
     const r = await post('/api/menu/run', { id }).catch(() => null);
     b.classList.remove('busy');
-    if (!r || !r.ok) { toast('couldn’t run that'); return; }
+    const res = r && r.ok ? await r.json().catch(() => ({})) : null;
+    if (!res || !res.ok) { toast('couldn’t run that'); return; }
     closeMenu();
-    toast(kind === 'provider' ? `${name} opened on your computer` : `${name} → your computer`);
+    // Something opened on the computer: go watch it and finish it there.
+    if ((res.opensWindow || kind === 'provider') && screenOk) { show('screen'); toast(`${name} — on your screen`); }
+    else toast(kind === 'provider' ? `${name} opened on your computer` : `${name} → your computer`);
   });
 
   // ---------- processes ----------
@@ -626,26 +629,48 @@
     refreshProcs();
   });
 
-  // ---------- views: home ⇄ processes ⇄ terminal ----------
+  // ---------- desktop widget: a live still of your screen ----------
+  let screenOk = false;
+  let thumbTimer = null;
+  async function checkScreen() {
+    try { screenOk = !!(await (await fetch('/api/screen')).json()).available; } catch { screenOk = false; }
+    return screenOk;
+  }
+  function refreshThumb() {
+    const img = $('#deskThumb');
+    const next = new Image();
+    next.onload = () => { img.src = next.src; $('#deskWin').classList.add('has-thumb'); };
+    next.src = `/api/screen/thumb?t=${Date.now()}`;
+  }
+
+  // ---------- views: home ⇄ processes ⇄ terminal ⇄ screen ----------
   let view = 'home';
+  const VIEWS = ['terminal', 'processes', 'screen'];
   const hashOf = (v) => (v === 'home' ? '#' : `#${v}`);
-  const viewOfHash = () => (location.hash === '#terminal' ? 'terminal' : location.hash === '#processes' ? 'processes' : 'home');
+  const viewOfHash = () => VIEWS.find((v) => location.hash === `#${v}`) || 'home';
   function show(next, push = true) {
     view = next;
-    const onHome = next !== 'terminal';
+    const onHome = next === 'home' || next === 'processes';
     const procs = next === 'processes';
     $('#home').hidden = !onHome;
-    $('#termView').hidden = onHome;
+    $('#termView').hidden = next !== 'terminal';
+    $('#screenView').hidden = next !== 'screen';
     document.documentElement.classList.toggle('home', onHome);
+    document.documentElement.classList.toggle('screen', next === 'screen');
     $('#home').classList.toggle('procs', procs);
     $('#procWin').hidden = !procs;
     clearInterval(homeTimer);
     clearInterval(procTimer);
+    clearInterval(thumbTimer);
     if (onHome) {
       refreshHome();
       homeTimer = setInterval(() => { if (!document.hidden) refreshHome(); }, 2500);
     }
-    if (next === 'home') renderPeek();
+    if (next === 'home') {
+      renderPeek();
+      refreshThumb();
+      thumbTimer = setInterval(() => { if (!document.hidden) refreshThumb(); }, 5000);
+    }
     if (procs) {
       refreshProcs();
       procTimer = setInterval(() => { if (!document.hidden) refreshProcs(); }, 2000);
@@ -656,6 +681,7 @@
       requestAnimationFrame(() => { pane.scrollTop = pane.scrollHeight; measure(); });
       input.focus({ preventScroll: true });
     }
+    window.dispatchEvent(new CustomEvent('takeout:view', { detail: next }));
     if (push) history.pushState({ view: next }, '', hashOf(next));
   }
   const goBack = () => (history.state && history.state.view !== 'home' && history.length > 1 ? history.back() : show('home'));
@@ -664,8 +690,17 @@
   $('#peekWin').addEventListener('keydown', (e) => { if (e.key === 'Enter') show('terminal'); });
   $('#sysWin').addEventListener('click', () => show('processes'));
   $('#sysWin').addEventListener('keydown', (e) => { if (e.key === 'Enter') show('processes'); });
+  $('#deskWin').addEventListener('click', () => show('screen'));
+  $('#deskWin').addEventListener('keydown', (e) => { if (e.key === 'Enter') show('screen'); });
   $('#procBack').addEventListener('click', goBack);
   $('#homeBtn').addEventListener('click', goBack);
+
+  // For screen.js (a separate module).
+  window.Takeout = {
+    show, toast, back: goBack,
+    runInTerminal(cmd) { show('terminal'); sendInput({ text: cmd, key: 'Enter' }); },
+  };
+  checkScreen();
 
   tickClock();
   setInterval(tickClock, 1000);
