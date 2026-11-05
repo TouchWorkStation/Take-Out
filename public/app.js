@@ -323,26 +323,30 @@
     return `linear-gradient(${angle}, ${cols.join(', ')}) 1`;
   }
 
+  // Image wallpapers paint on the root page background (see app.css — it's the
+  // only thing iPhones draw in the strip at the bottom); videos play in the page.
   let wallKey = null;
   function setWallpaper(theme) {
     const key = theme.background || 'none';
     if (key === wallKey) return;
     wallKey = key;
+    const root = document.documentElement.style;
     const wall = $('#homeWall');
     wall.replaceChildren();
-    wall.style.backgroundImage = 'none';
-    if (!theme.background) return;
+    $('#home').classList.remove('video');
+    if (!theme.background) { root.removeProperty('--page-wall'); return; }
     const src = `/api/background?v=${theme.background}`;
     if (theme.backgroundType === 'video') {
+      root.removeProperty('--page-wall');
+      $('#home').classList.add('video');
       const v = document.createElement('video');
       Object.assign(v, { src, muted: true, loop: true, autoplay: true, playsInline: true });
       v.setAttribute('playsinline', '');
       wall.appendChild(v);
       v.play().catch(() => {});
     } else {
-      wall.style.opacity = '0';
       const img = new Image();
-      img.onload = () => { wall.style.backgroundImage = `url(${src})`; wall.style.opacity = '1'; };
+      img.onload = () => root.setProperty('--page-wall', `url("${src}")`);
       img.src = src;
     }
   }
@@ -533,6 +537,7 @@
     view = next;
     const home = next === 'home';
     $('#home').hidden = !home;
+    document.documentElement.classList.toggle('home', home);
     $('#termView').hidden = home;
     clearInterval(homeTimer);
     if (home) {

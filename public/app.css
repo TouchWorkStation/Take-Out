@@ -18,8 +18,19 @@
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); overflow: hidden; overscroll-behavior: none; }
-body { font-family: var(--mono); transition: background-color .5s var(--ease); }
+html, body { margin: 0; height: 100%; color: var(--fg); overflow: hidden; overscroll-behavior: none; }
+/* iPhone home-screen apps leave a strip at the bottom (about the status bar's
+   height) that only the page's root background ever paints. So the root carries
+   the backdrop itself, and is made tall enough to reach into that strip:
+   plain theme background in the terminal, the wallpaper on the home screen. */
+html { min-height: calc(100% + env(safe-area-inset-top) + env(safe-area-inset-bottom)); background: var(--bg); }
+html.home {
+  background:
+    linear-gradient(to bottom, color-mix(in srgb, var(--bg) 10%, transparent), color-mix(in srgb, var(--bg) 45%, transparent)),
+    var(--page-wall, none) center / cover no-repeat,
+    var(--bg);
+}
+body { font-family: var(--mono); background: transparent; }
 button { cursor: pointer; }
 
 /* iOS never shrinks the layout viewport for the keyboard; pin to the visual viewport (from TW). */
@@ -180,17 +191,17 @@ dialog#sheet::backdrop { background: rgba(0, 0, 0, .45); }
 .mt-root[hidden], .om-home[hidden] { display: none !important; }
 
 .om-home {
-  /* Extend past the bottom edge: iPhones otherwise leave the page background
-     showing as a grey strip under the home screen. */
-  position: fixed; top: 0; left: 0; right: 0; bottom: calc(-1 * env(safe-area-inset-bottom) - 120px);
-  overflow: hidden; background: var(--bg); color: var(--fg);
+  position: fixed; inset: 0;
+  overflow: hidden; background: transparent; color: var(--fg);
 }
 .om-wall, .om-wall video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; background-size: cover; background-position: center; }
 .om-wall { transition: opacity .6s var(--ease); }
-.om-shade { position: absolute; inset: 0; background: linear-gradient(to bottom, color-mix(in srgb, var(--bg) 10%, transparent), color-mix(in srgb, var(--bg) 45%, transparent)); pointer-events: none; }
+/* Video wallpapers can't be a CSS background, so they play in the page instead. */
+.om-home.video .om-shade { display: block; }
+.om-shade { display: none; position: absolute; inset: 0; background: linear-gradient(to bottom, color-mix(in srgb, var(--bg) 10%, transparent), color-mix(in srgb, var(--bg) 45%, transparent)); pointer-events: none; }
 .om-scroll {
   position: absolute; inset: 0; overflow-y: auto; -webkit-overflow-scrolling: touch;
-  padding: 0 env(safe-area-inset-right) calc(env(safe-area-inset-bottom) * 2 + 130px) env(safe-area-inset-left);
+  padding: 0 env(safe-area-inset-right) calc(env(safe-area-inset-bottom) + 14px) env(safe-area-inset-left);
 }
 
 /* The bar, as Omarchy draws it: opaque theme background, theme text, 12px,
