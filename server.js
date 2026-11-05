@@ -554,6 +554,98 @@ async function barData(ws) {
   };
 }
 
+// ---------- the Omarchy menu ----------
+// The same menu the logo opens on the desktop, built by Omarchy's own
+// MenuModel.js from the shipped definition plus the user's extensions. Rows
+// run exactly as the desktop runs them (bash -lc, detached), so what a row
+// does — and where it shows up — is what it does on the desktop.
+let menuModel;
+let menuCache = { key: '', items: null, itemOrder: null };
+let guardCache = { at: 0, when: {}, checked: {}, disabled: {} };
+const MENU_DEFAULT = () => path.join(OMARCHY_PATH, 'default', 'omarchy', 'omarchy-menu.jsonc');
+const MENU_USER = path.join(HOME, '.config', 'omarchy', 'extensions', 'omarchy-menu.jsonc');
+
+function loadMenu() {
+  if (menuModel === undefined) {
+    try { menuModel = require(path.join(OMARCHY_PATH, 'shell', 'plugins', 'menu', 'MenuModel.js')); }
+    catch { menuModel = null; }
+  }
+  if (!menuModel) return null;
+  const stamp = (f) => { try { const s = fs.statSync(f); return `${s.mtimeMs}:${s.size}`; } catch { return '-'; } };
+  const key = stamp(MENU_DEFAULT()) + '|' + stamp(MENU_USER);
+  if (key !== menuCache.key || !menuCache.items) {
+    const read = (f, required) => { try { return menuModel.keepMenuRows([], fs.readFileSync(f, 'utf8'), required); } catch { return []; } };
+    const merged = menuModel.mergeMenuSources(read(MENU_DEFAULT(), true), read(MENU_USER, false), 'Go');
+    menuCache = { key, items: merged.items, itemOrder: merged.itemOrder };
+    guardCache.at = 0;
+  }
+  return menuCache;
+}
+
+// Every `when` / `checked` / `disabled` guard in one batch, like the desktop menu.
+async function menuGuards(items) {
+  if (Date.now() - guardCache.at < 4000) return guardCache;
+  const script = menuModel.guardScript(items);
+  const next = { at: Date.now(), when: {}, checked: {}, disabled: {} };
+  if (script) {
+    let out = '';
+    try { out = await run('bash', ['-lc', script], { timeout: 10000 }); }
+    catch (e) { out = e.stdout ? String(e.stdout) : ''; }
+    for (const line of out.split('\n')) {
+      const m = line.trim().match(/^(.+):([wcd]):([01])$/);
+      if (!m) continue;
+      const bucket = m[2] === 'w' ? next.when : m[2] === 'c' ? next.checked : next.disabled;
+      bucket[m[1]] = m[3] === '1';
+    }
+  }
+  guardCache = next;
+  return next;
+}
+
+async function menuView(id) {
+  const menu = loadMenu();
+  if (!menu) return null;
+  const { items, itemOrder } = menu;
+  let entry = items[id] || items.root;
+  if (entry.kind === 'link' && items[entry.target]) entry = items[entry.target];
+  const g = await menuGuards(items);
+  const rows = [];
+  for (const childId of itemOrder) {
+    const e = items[childId];
+    if (!e || e.parent !== entry.id) continue;
+    if (!menuModel.isVisible(items, itemOrder, g.when, e)) continue;
+    rows.push({
+      id: e.id,
+      icon: e.icon || '',
+      iconFont: e.iconFont || '',
+      label: menuModel.labelFor(e, g.checked, g.disabled),
+      kind: e.kind,                       // action | menu | link
+      provider: !!e.provider && e.kind === 'menu',
+      disabled: menuModel.isDisabled(g.disabled, e),
+    });
+  }
+  const parent = entry.id === 'root' ? null : (entry.parent || 'root');
+  return { id: entry.id, title: entry.id === 'root' ? '' : (entry.title || entry.label), parent, rows };
+}
+
+function runMenuItem(id) {
+  const menu = loadMenu();
+  const e = menu && menu.items[id];
+  if (!e) return { ok: false, error: 'unknown item' };
+  let command = e.action;
+  // Rows filled in at runtime by the desktop shell (fonts, languages, kernels)
+  // have no list we can draw, so open that submenu on the desktop instead.
+  if (!command && e.kind === 'menu' && e.provider) command = `omarchy-menu summon ${e.id}`;
+  if (!command) return { ok: false, error: 'nothing to run' };
+  if (menuModel.isDisabled(guardCache.disabled, e)) return { ok: false, error: 'already installed' };
+  // Only commands from the menu files themselves ever run — the phone sends an id, never a command.
+  const child = spawn('bash', ['-lc', command], { detached: true, stdio: 'ignore', env: ENV });
+  child.on('error', () => {});
+  child.unref();
+  guardCache.at = 0; // checkmarks may have changed
+  return { ok: true, label: e.label };
+}
+
 function omarchyFontPath() {
   for (const f of [path.join(OMARCHY_PATH, 'default', 'fonts', 'omarchy', 'omarchy.ttf'), path.join(HOME, '.local', 'share', 'fonts', 'omarchy.ttf')]) {
     if (fs.existsSync(f)) return f;
@@ -784,6 +876,18 @@ const server = http.createServer((req, res) => {
     return phoneWallpaper(bg).then((file) => sendRange(req, res, file));
   }
   if (p === '/api/home') return homeData().then((d) => json(res, d));
+  if (p === '/api/menu') {
+    return menuView(url.searchParams.get('id') || 'root').then((m) => m ? json(res, m) : json(res, { error: 'menu unavailable' }, 404));
+  }
+  if (p === '/api/menu/run' && req.method === 'POST') {
+    if (!sameOrigin(req)) return send(res, 403, 'forbidden');
+    return readBody(req, (b) => {
+      let id = '';
+      try { id = String(JSON.parse(b).id || ''); } catch {}
+      const r = runMenuItem(id);
+      json(res, r, r.ok ? 200 : 400);
+    }, 1024);
+  }
   if (p === '/api/processes') return json(res, processes(url.searchParams.get('sort')));
   if (p === '/api/font/omarchy') {
     const f = omarchyFontPath();

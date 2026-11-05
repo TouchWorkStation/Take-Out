@@ -330,3 +330,40 @@ dialog#sheet::backdrop { background: rgba(0, 0, 0, .45); }
 .om-proc-row > em.high { color: var(--c1); }
 .om-home.procs .om-grid { display: none; }
 .om-proc-row > div { min-width: 0; }
+
+/* The Omarchy menu: the desktop's card — theme background, theme border,
+   an icon column, the touched row in the accent, installed rows faded with ✓. */
+.om-menu[hidden] { display: none; }
+.om-menu {
+  position: fixed; inset: 0; z-index: 20;
+  background: color-mix(in srgb, #000 35%, transparent);
+  padding: calc(env(safe-area-inset-top) + 38px) 10px calc(env(safe-area-inset-bottom) + 10px);
+  animation: om-fade .15s ease-out;
+}
+@keyframes om-fade { from { opacity: 0; } }
+.om-menu-card {
+  display: flex; flex-direction: column; max-height: 100%;
+  background: var(--bg); color: var(--fg);
+  border: 2px solid transparent; border-image: var(--win-border);
+  font: 14px/1.2 var(--mono);
+  animation: om-drop .18s var(--ease);
+}
+@keyframes om-drop { from { transform: translateY(-8px); opacity: 0; } }
+.om-menu-head { display: flex; align-items: center; gap: 8px; padding: 12px 12px 6px; min-height: 22px; }
+.om-menu-title { flex: 1; color: var(--accent); font-weight: 600; font-size: 13px; }
+.om-menu-back, .om-menu-close { border: 0; background: transparent; color: var(--muted); font: 18px var(--mono); padding: 2px 6px; }
+.om-menu-back { color: var(--accent); font-size: 22px; line-height: 1; }
+.om-menu-rows { overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 0 6px 8px; }
+.om-menu-row {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  min-height: 48px; padding: 0 10px; border: 0;
+  background: transparent; color: var(--fg); font: inherit; text-align: left;
+}
+.om-menu-row:active, .om-menu-row.busy { background: var(--accent); color: var(--bg); }
+.om-menu-row[disabled] { opacity: .4; }
+.om-menu-icon { width: 30px; flex: none; text-align: center; font-size: 19px; }
+.om-menu-icon.brand { font-family: OmarchyLogo, var(--mono); }
+.om-menu-label { flex: 1; }
+.om-menu-more { color: var(--muted); font-size: 16px; }
+.om-menu-row:active .om-menu-more { color: var(--bg); }
+.om-menu-note { color: var(--muted); font-size: 12px; padding: 14px 12px; }

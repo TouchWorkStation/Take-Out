@@ -464,8 +464,8 @@
     switch (w.id) {
       case 'omarchy.menu': {
         const m = el('button', 'om-w om-logo', '');
-        m.setAttribute('aria-label', 'Open terminal');
-        m.addEventListener('click', () => show('terminal'));
+        m.setAttribute('aria-label', 'Omarchy menu');
+        m.addEventListener('click', () => openMenu('root'));
         return m;
       }
       case 'omarchy.workspaces': {
@@ -530,6 +530,62 @@
 
   // The Omarchy logo comes from Omarchy's own font.
   new FontFace('OmarchyLogo', 'url(/api/font/omarchy)').load().then((f) => document.fonts.add(f)).catch(() => {});
+
+  // ---------- the Omarchy menu ----------
+  // Same rows, icons, checkmarks and actions as the menu the logo opens on the
+  // desktop. Picking a row runs it on the computer, exactly as clicking it there.
+  const CONFIRM = new Set(['system.logout', 'system.reboot', 'system.shutdown', 'system.suspend', 'system.hibernate']);
+  let menuStack = [];
+  async function openMenu(id, push = true) {
+    $('#menu').hidden = false;
+    if (push) menuStack.push(id);
+    $('#menuBack').hidden = menuStack.length <= 1;
+    const rowsEl = $('#menuRows');
+    if (!rowsEl.children.length || push) rowsEl.replaceChildren(el('div', 'om-menu-note', '…'));
+    let m;
+    try {
+      const r = await fetch(`/api/menu?id=${encodeURIComponent(id)}`);
+      m = await r.json();
+      if (!r.ok) throw new Error(m.error);
+    } catch {
+      rowsEl.replaceChildren(el('div', 'om-menu-note', 'The Omarchy menu isn’t available on this computer.'));
+      return;
+    }
+    if (menuStack[menuStack.length - 1] !== id) return; // moved on while it loaded
+    $('#menuTitle').textContent = m.title || '';
+    const rows = m.rows.map((r) => {
+      const b = el('button', 'om-menu-row');
+      b.dataset.id = r.id;
+      b.dataset.kind = r.provider ? 'provider' : r.kind;
+      b.dataset.label = r.label;
+      if (r.disabled) b.disabled = true;
+      const icon = el('span', 'om-menu-icon', r.icon);
+      if (r.iconFont) icon.classList.add('brand');
+      b.append(icon, el('span', 'om-menu-label', r.label));
+      if (r.kind === 'menu' || r.kind === 'link') b.append(el('span', 'om-menu-more', '›'));
+      return b;
+    });
+    rowsEl.replaceChildren(...(rows.length ? rows : [el('div', 'om-menu-note', 'Nothing here on this computer.')]));
+    rowsEl.scrollTop = 0;
+  }
+  function closeMenu() { $('#menu').hidden = true; menuStack = []; $('#menuRows').replaceChildren(); }
+  $('#menuClose').addEventListener('click', closeMenu);
+  $('#menu').addEventListener('click', (e) => { if (e.target.id === 'menu') closeMenu(); });
+  $('#menuBack').addEventListener('click', () => { menuStack.pop(); openMenu(menuStack[menuStack.length - 1], false); });
+  $('#menuRows').addEventListener('click', async (e) => {
+    const b = e.target.closest('.om-menu-row');
+    if (!b || b.disabled) return;
+    const { id, kind, label } = b.dataset;
+    if (kind === 'menu' || kind === 'link') return openMenu(id);
+    const name = label.replace(/ ✓$/, '');
+    if (CONFIRM.has(id) && !confirm(`${name} your computer?`)) return;
+    b.classList.add('busy');
+    const r = await post('/api/menu/run', { id }).catch(() => null);
+    b.classList.remove('busy');
+    if (!r || !r.ok) { toast('couldn’t run that'); return; }
+    closeMenu();
+    toast(kind === 'provider' ? `${name} opened on your computer` : `${name} → your computer`);
+  });
 
   // ---------- processes ----------
   let procSort = 'cpu';
