@@ -179,34 +179,49 @@ dialog#sheet::backdrop { background: rgba(0, 0, 0, .45); }
 }
 .mt-root[hidden], .om-home[hidden] { display: none !important; }
 
-.om-home { position: fixed; inset: 0; overflow: hidden; background: var(--bg); color: var(--fg); }
+.om-home {
+  /* Extend past the bottom edge: iPhones otherwise leave the page background
+     showing as a grey strip under the home screen. */
+  position: fixed; top: 0; left: 0; right: 0; bottom: calc(-1 * env(safe-area-inset-bottom) - 120px);
+  overflow: hidden; background: var(--bg); color: var(--fg);
+}
 .om-wall, .om-wall video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; background-size: cover; background-position: center; }
 .om-wall { transition: opacity .6s var(--ease); }
 .om-shade { position: absolute; inset: 0; background: linear-gradient(to bottom, color-mix(in srgb, var(--bg) 10%, transparent), color-mix(in srgb, var(--bg) 45%, transparent)); pointer-events: none; }
 .om-scroll {
   position: absolute; inset: 0; overflow-y: auto; -webkit-overflow-scrolling: touch;
-  padding: env(safe-area-inset-top) env(safe-area-inset-right) calc(env(safe-area-inset-bottom) + 10px) env(safe-area-inset-left);
+  padding: 0 env(safe-area-inset-right) calc(env(safe-area-inset-bottom) * 2 + 130px) env(safe-area-inset-left);
 }
 
-/* The bar: Omarchy's top bar — workspaces left, clock center, indicators right. */
+/* The bar, as Omarchy draws it: opaque theme background, theme text, 12px,
+   left / center / right sections. It also fills the strip behind the phone's
+   status bar, so nothing scrolls up there and blurs. */
 .om-bar {
   position: sticky; top: 0; z-index: 2;
   display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;
-  height: 30px; padding: 0 12px;
-  background: var(--bg); color: var(--fg); font: 12px var(--mono);
+  padding: env(safe-area-inset-top) calc(env(safe-area-inset-right) + 6px) 0 calc(env(safe-area-inset-left) + 6px);
+  height: calc(env(safe-area-inset-top) + 28px);
+  background: var(--bg); color: var(--fg);
+  font: 12px/1 var(--mono);
 }
-.om-ws { display: flex; gap: 2px; }
-.om-ws button {
-  min-width: 22px; height: 22px; padding: 0 5px; border: 0; background: transparent;
-  color: var(--muted); font: inherit; line-height: 22px;
+.om-bar.see-through { background: transparent; }
+.om-sec { display: flex; align-items: center; gap: 0; min-width: 0; white-space: nowrap; }
+.om-left { justify-content: flex-start; }
+.om-center { justify-content: center; gap: 2px; }
+.om-right { justify-content: flex-end; }
+.om-w {
+  display: inline-flex; align-items: center; justify-content: center;
+  height: 28px; min-width: 22px; padding: 0 4px;
+  border: 0; background: transparent; color: var(--fg);
+  font: 13px/1 var(--mono);
 }
-.om-ws button.has { color: var(--fg); }
-.om-ws button.on { color: var(--accent); font-weight: 700; }
-.om-ws button.on::after { content: ""; display: block; height: 2px; margin-top: -3px; background: var(--accent); }
-.om-bar-clock { text-align: center; font-weight: 600; white-space: nowrap; }
-.om-bar-right { display: flex; justify-content: flex-end; gap: 10px; color: var(--fg); white-space: nowrap; }
-.om-bar-right .warn { color: var(--c3); }
-.om-bar-right .crit { color: var(--c1); }
+.om-w.dim { opacity: .5; }
+.om-w.crit { color: var(--c1); }
+.om-logo { font-family: OmarchyLogo, var(--mono); font-size: 14px; padding: 0 8px 0 4px; }
+.om-ws { display: flex; }
+.om-ws .om-w { min-width: 20px; padding: 0 3px; font-size: 12px; }
+.om-clock-w { font-size: 12px; font-weight: 600; padding: 0 8px; }
+.om-update { color: var(--accent); }
 
 .om-grid {
   display: grid; grid-template-columns: 1fr 1fr;

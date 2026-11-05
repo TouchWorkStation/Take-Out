@@ -370,7 +370,7 @@
     const hh = pad(d.getHours()), mm = pad(d.getMinutes());
     $('#time').innerHTML = `${hh}<span class="colon">:</span>${mm}`;
     $('#date').textContent = `${DAYS[d.getDay()]}, ${MONTHS[d.getMonth()]} ${d.getDate()}`;
-    $('#barClock').textContent = `${DAYS[d.getDay()].slice(0, 3)} ${hh}:${mm}`;
+    if (barClock && barClock.el.isConnected) barClock.el.textContent = qtFormat(barClock.alt ? barClock.formatAlt : barClock.format, d);
   }
 
   const gb = (b) => b >= 1e12 ? `${(b / 1e12).toFixed(1)}T` : `${(b / 1e9).toFixed(b >= 1e10 ? 0 : 1)}G`;
@@ -403,41 +403,129 @@
     $('#uptime').textContent = uptime(h.uptime);
     $('#load').textContent = `load ${h.load.toFixed(2)}`;
 
-    const right = $('#barRight');
-    right.replaceChildren();
-    const cpu = document.createElement('span');
-    cpu.textContent = `cpu ${h.cpu}%`;
-    if (h.cpu >= 85) cpu.className = 'crit';
-    right.appendChild(cpu);
-    if (bat) {
-      const s = document.createElement('span');
-      s.textContent = `${bat.status === 'Charging' ? '⚡' : 'bat'} ${bat.pct}%`;
-      if (bat.pct <= 15) s.className = 'crit'; else if (bat.pct <= 30) s.className = 'warn';
-      right.appendChild(s);
-    }
+    renderBar(h);
+  }
 
-    // Workspaces like Omarchy's bar: 1–5 always shown, plus any others in use.
-    const ws = $('#ws');
-    ws.replaceChildren();
-    const info = h.workspaces;
-    const ids = new Set([1, 2, 3, 4, 5, ...(info ? info.list.map((w) => w.id) : [])]);
-    for (const id of [...ids].sort((a, b) => a - b)) {
-      const w = info && info.list.find((x) => x.id === id);
-      const btn = document.createElement('button');
-      btn.textContent = id;
-      btn.dataset.id = id;
-      if (w && w.windows) btn.classList.add('has');
-      if (info && info.active === id) btn.classList.add('on');
-      if (!info) btn.disabled = true;
-      ws.appendChild(btn);
+  // ---------- the desktop's bar ----------
+  // Same widgets, same order, same glyphs as the Omarchy bar on the desktop,
+  // from the layout in ~/.config/omarchy/shell.json.
+  const G = {
+    wifi: ['󰤯', '󰤟', '󰤢', '󰤥', '󰤨'],
+    batCharging: ['󰢜', '󰂆', '󰂇', '󰂈', '󰢝', '󰂉', '󰢞', '󰂊', '󰂋', '󰂅'],
+    bat: ['󰁺', '󰁻', '󰁼', '󰁽', '󰁾', '󰁿', '󰂀', '󰂁', '󰂂', '󰁹'],
+  };
+  const glyph = {
+    network: (n) => !n ? '' : n.kind === 'wifi' ? G.wifi[Math.max(0, Math.min(4, Math.ceil((n.strength || 0) / 20) - 1))] : n.kind === 'ethernet' ? '󰈀' : '󰤮',
+    bluetooth: (b) => !b ? '' : !b.enabled ? '󰂲' : b.connected ? '󰂱' : '󰂯',
+    audio: (a) => !a ? '' : a.headphones ? '\u{f02cb}' : a.muted ? '\u{eee8}' : a.volume >= 0.67 ? '' : a.volume >= 0.34 ? '' : a.volume > 0 ? '' : '\u{eee8}',
+    power: (b) => {
+      if (!b) return '';
+      const i = Math.max(0, Math.min(9, Math.floor(b.pct / 10)));
+      if (b.status === 'Full') return '󰂅';
+      return b.status === 'Charging' ? G.batCharging[i] : G.bat[i];
+    },
+    layout: (m) => m === 'scrolling' ? '󰝥' : m === 'floating' ? '󰔶' : '󱓻',
+  };
+
+  // Qt date formats, as the desktop clock uses them ("dddd HH:mm", "d MMMM 'W'ww yyyy").
+  function qtFormat(fmt, d) {
+    const week = (() => {
+      const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+      t.setUTCDate(t.getUTCDate() + 4 - (t.getUTCDay() || 7));
+      return Math.ceil(((t - Date.UTC(t.getUTCFullYear(), 0, 1)) / 86400000 + 1) / 7);
+    })();
+    const h12 = d.getHours() % 12 || 12;
+    const T = {
+      dddd: DAYS[d.getDay()], ddd: DAYS[d.getDay()].slice(0, 3), dd: pad(d.getDate()), d: d.getDate(),
+      MMMM: MONTHS[d.getMonth()], MMM: MONTHS[d.getMonth()].slice(0, 3), MM: pad(d.getMonth() + 1), M: d.getMonth() + 1,
+      yyyy: d.getFullYear(), yy: String(d.getFullYear()).slice(2),
+      HH: pad(d.getHours()), H: d.getHours(), hh: pad(h12), h: h12, mm: pad(d.getMinutes()), m: d.getMinutes(),
+      ss: pad(d.getSeconds()), s: d.getSeconds(), AP: d.getHours() < 12 ? 'AM' : 'PM', ap: d.getHours() < 12 ? 'am' : 'pm',
+      ww: pad(week), w: week,
+    };
+    return String(fmt).replace(/'([^']*)'|dddd|ddd|dd|d|MMMM|MMM|MM|M|yyyy|yy|HH|H|hh|h|mm|m|ss|s|AP|ap|ww|w/g,
+      (tok, lit) => (lit !== undefined ? lit : String(T[tok])));
+  }
+
+  let barClock = null;   // { el, format, formatAlt, alt }
+  let lastHome = null;
+  function el(tag, cls, text) {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text;
+    return e;
+  }
+  function widget(w, h) {
+    const b = h.bar || {};
+    switch (w.id) {
+      case 'omarchy.menu': {
+        const m = el('button', 'om-w om-logo', '');
+        m.setAttribute('aria-label', 'Open terminal');
+        m.addEventListener('click', () => show('terminal'));
+        return m;
+      }
+      case 'omarchy.workspaces': {
+        const box = el('div', 'om-ws');
+        const info = h.workspaces;
+        const ids = new Set([1, 2, 3, 4, 5, ...(info ? info.list.filter((x) => x.id <= 10).map((x) => x.id) : [])]);
+        for (const id of [...ids].sort((x, y) => x - y)) {
+          const ws = info && info.list.find((x) => x.id === id);
+          const active = info && info.active === id;
+          const btn = el('button', 'om-w', active ? glyph.layout(b.layoutMode) : (id === 10 ? '0' : String(id)));
+          btn.dataset.id = id;
+          if (!(active || (ws && ws.windows))) btn.classList.add('dim');
+          if (!info) btn.disabled = true;
+          box.appendChild(btn);
+        }
+        return box;
+      }
+      case 'omarchy.clock': {
+        const c = el('button', 'om-w om-clock-w');
+        const alt = barClock && barClock.alt;
+        barClock = { el: c, format: w.format || 'dddd HH:mm', formatAlt: w.formatAlt || "d MMMM 'W'ww yyyy", alt };
+        c.addEventListener('click', () => { barClock.alt = !barClock.alt; tickClock(); });
+        return c;
+      }
+      case 'omarchy.weather': return b.weather ? el('span', 'om-w', b.weather) : null;
+      case 'omarchy.system-update': return b.update ? el('span', 'om-w om-update', '') : null;
+      case 'omarchy.elsewhen': return el('span', 'om-w', '󰇧');
+      case 'omarchy.bluetooth': { const g = glyph.bluetooth(b.bluetooth); return g ? el('span', 'om-w', g) : null; }
+      case 'omarchy.network': return el('span', 'om-w', glyph.network(b.network));
+      case 'omarchy.audio': { const g = glyph.audio(b.audio); return g ? el('span', 'om-w', g) : null; }
+      case 'omarchy.monitor': return b.monitors ? el('span', 'om-w', b.monitors > 1 ? '󰍺' : '󰍹') : null;
+      case 'omarchy.power': {
+        const g = glyph.power(h.battery);
+        if (!g) return null;
+        const s = el('span', 'om-w', g);
+        if (h.battery.status !== 'Charging' && h.battery.pct <= 15) s.classList.add('crit');
+        return s;
+      }
+      default: return null; // tray, agents, keyboard layout… desktop-only for now
     }
   }
-  $('#ws').addEventListener('click', async (e) => {
-    const b = e.target.closest('button');
+  function renderBar(h) {
+    lastHome = h;
+    const L = (h.bar && h.bar.layout) || {};
+    const fill = (target, ids) => {
+      const out = [];
+      for (const w of ids.flatMap((k) => L[k] || [])) { const e = widget(w, h); if (e) out.push(e); }
+      target.replaceChildren(...out);
+    };
+    fill($('#barLeft'), ['left']);
+    fill($('#barCenter'), ['centerBegin', 'center', 'centerEnd']);
+    fill($('#barRight'), ['right']);
+    $('#bar').classList.toggle('see-through', h.bar && h.bar.background === 'transparent');
+    tickClock();
+  }
+  $('#barLeft').addEventListener('click', async (e) => {
+    const b = e.target.closest('.om-ws button');
     if (!b || b.disabled) return;
     await post('/api/workspace', { id: +b.dataset.id }).catch(() => {});
     refreshHome();
   });
+
+  // The Omarchy logo comes from Omarchy's own font.
+  new FontFace('OmarchyLogo', 'url(/api/font/omarchy)').load().then((f) => document.fonts.add(f)).catch(() => {});
 
   // ---------- views: home ⇄ terminal ----------
   let view = 'home';

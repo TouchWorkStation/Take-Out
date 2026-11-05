@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "takeout",
   "name": "Takeout",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "author": "Chris Jordan",
   "description": "Your Omarchy terminal, to go — a phone terminal that wears your theme",
   "kinds": ["service"],

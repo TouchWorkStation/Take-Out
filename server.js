@@ -344,8 +344,168 @@ async function workspaces() {
     return { list: list.sort((a, b) => a.id - b.id), active: JSON.parse(active).id };
   } catch { return null; }
 }
-async function homeData() {
+// ---------- the desktop's bar, mirrored ----------
+// Read the bar layout the user's Omarchy shell is using, and the live state
+// each widget needs, so the phone draws the same bar the desktop shows.
+const OMARCHY_PATH = process.env.OMARCHY_PATH || path.join(HOME, '.local', 'share', 'omarchy');
+function readJson(file) {
+  try { return JSON.parse(fs.readFileSync(file, 'utf8').replace(/^\s*\/\/.*$/mg, '')); } catch { return null; }
+}
+function barLayout() {
+  const user = readJson(path.join(HOME, '.config', 'omarchy', 'shell.json'));
+  const base = readJson(path.join(OMARCHY_PATH, 'config', 'omarchy', 'shell.json'));
+  const bar = { ...(base && base.bar), ...(user && user.bar) };
+  const layout = (user && user.bar && user.bar.layout) || (base && base.bar && base.bar.layout) || {
+    left: [{ id: 'omarchy.menu' }, { id: 'omarchy.workspaces' }],
+    center: [{ id: 'omarchy.clock', format: 'dddd HH:mm', formatAlt: "d MMMM 'W'ww yyyy" }],
+    right: [{ id: 'omarchy.bluetooth' }, { id: 'omarchy.network' }, { id: 'omarchy.audio' }, { id: 'omarchy.power' }],
+  };
+  return { layout, background: bar.background || 'opaque' };
+}
+
+// Omarchy's own weather glyph logic, loaded straight from its Model.js.
+let weatherModel;
+function weatherGlyph(fn, ...args) {
+  if (weatherModel === undefined) {
+    weatherModel = null;
+    try {
+      const vm = require('vm');
+      const src = fs.readFileSync(path.join(OMARCHY_PATH, 'shell', 'plugins', 'panels', 'weather', 'Model.js'), 'utf8')
+        .replace(/^\s*\.(pragma|import).*$/mg, '');
+      const ctx = {};
+      vm.createContext(ctx);
+      vm.runInContext(src, ctx, { timeout: 1000 });
+      weatherModel = ctx;
+    } catch {}
+  }
+  try { return weatherModel && typeof weatherModel[fn] === 'function' ? weatherModel[fn](...args) : ''; } catch { return ''; }
+}
+let weather = { at: 0, icon: '' };
+async function refreshWeather() {
+  if (Date.now() - weather.at < 15 * 60 * 1000) return;
+  weather.at = Date.now();
+  try {
+    const loc = readJson(path.join(HOME, '.local', 'state', 'omarchy', 'settings', 'weather.json')) || {};
+    const lat = parseFloat(loc.latitude), lon = parseFloat(loc.longitude);
+    if (!isNaN(lat) && !isNaN(lon)) {
+      const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=weather_code,is_day`, { signal: AbortSignal.timeout(8000) });
+      const j = await r.json();
+      weather.icon = weatherGlyph('iconForOpenMeteoCode', j.current.weather_code, !j.current.is_day);
+    } else {
+      // Same fallback the shell uses: wttr.in finds the location by IP.
+      const r = await fetch('https://wttr.in/?format=j1', { signal: AbortSignal.timeout(8000) });
+      const j = await r.json();
+      const c = j.current_condition[0];
+      const hour = new Date().getHours();
+      weather.icon = weatherGlyph('iconForCode', c.weatherCode, hour < 6 || hour >= 19);
+    }
+  } catch { weather.at = Date.now() - 13 * 60 * 1000; } // retry in ~2 minutes
+}
+
+function networkState() {
+  try {
+    let best = null;
+    for (const dev of fs.readdirSync('/sys/class/net')) {
+      if (dev === 'lo' || /^(docker|veth|br-|virbr|tailscale|tun|wg)/.test(dev)) continue;
+      const base = path.join('/sys/class/net', dev);
+      const up = fs.readFileSync(path.join(base, 'operstate'), 'utf8').trim() === 'up';
+      if (!up) continue;
+      if (fs.existsSync(path.join(base, 'wireless'))) {
+        let strength = 100;
+        try {
+          const line = fs.readFileSync('/proc/net/wireless', 'utf8').split('\n').find((l) => l.trim().startsWith(dev + ':'));
+          if (line) strength = Math.round((parseFloat(line.split(/\s+/).filter(Boolean)[2]) / 70) * 100);
+        } catch {}
+        if (!best) best = { kind: 'wifi', strength };
+      } else if (fs.existsSync(path.join(base, 'device'))) {
+        best = { kind: 'ethernet' };
+      }
+    }
+    return best || { kind: 'none' };
+  } catch { return { kind: 'none' }; }
+}
+
+let bt = { at: 0, state: null };
+async function bluetoothState() {
+  if (Date.now() - bt.at < 10000) return bt.state;
+  bt.at = Date.now();
+  try {
+    const show = await run('bluetoothctl', ['show'], { timeout: 2000 });
+    if (!/Controller/.test(show)) { bt.state = null; return null; }
+    const enabled = /Powered:\s*yes/.test(show);
+    let connected = 0;
+    if (enabled) {
+      const devs = await run('bluetoothctl', ['devices', 'Connected'], { timeout: 2000 }).catch(() => '');
+      connected = devs.split('\n').filter((l) => l.startsWith('Device')).length;
+    }
+    bt.state = { enabled, connected };
+  } catch { bt.state = null; }
+  return bt.state;
+}
+
+async function audioState() {
+  try {
+    const out = await run('wpctl', ['get-volume', '@DEFAULT_AUDIO_SINK@'], { timeout: 2000 });
+    const m = out.match(/Volume:\s*([\d.]+)/);
+    if (!m) return null;
+    let headphones = false;
+    try {
+      const info = await run('wpctl', ['inspect', '@DEFAULT_AUDIO_SINK@'], { timeout: 2000 });
+      headphones = /head(phone|set)|airpods|buds|earphone/i.test(info);
+    } catch {}
+    return { volume: parseFloat(m[1]), muted: /MUTED/.test(out), headphones };
+  } catch { return null; }
+}
+
+async function monitorCount() {
+  try { return JSON.parse(await run('hyprctl', ['-j', 'monitors'])).length; } catch { return null; }
+}
+
+let layoutCache = { at: 0, ws: null, mode: 'dwindle' };
+async function activeLayout(wsId) {
+  if (layoutCache.ws === wsId && Date.now() - layoutCache.at < 5000) return layoutCache.mode;
+  try {
+    const mode = (await run('omarchy-hyprland-workspace-layout-current', [], { timeout: 2000 })).trim();
+    layoutCache = { at: Date.now(), ws: wsId, mode: mode || 'dwindle' };
+  } catch { layoutCache = { at: Date.now(), ws: wsId, mode: 'dwindle' }; }
+  return layoutCache.mode;
+}
+
+let updates = { at: 0, available: false };
+function updateAvailable() {
+  if (Date.now() - updates.at > 10 * 60 * 1000) {
+    updates.at = Date.now();
+    run('omarchy-update-available', [], { timeout: 20000 }).then(() => { updates.available = true; }, () => { updates.available = false; });
+  }
+  return updates.available;
+}
+
+async function barData(ws) {
+  refreshWeather();
+  const [bluetooth, audio, monitors] = await Promise.all([bluetoothState(), audioState(), monitorCount()]);
   return {
+    ...barLayout(),
+    network: networkState(),
+    bluetooth,
+    audio,
+    monitors,
+    weather: weather.icon,
+    update: updateAvailable(),
+    layoutMode: ws ? await activeLayout(ws.active) : 'dwindle',
+  };
+}
+
+function omarchyFontPath() {
+  for (const f of [path.join(OMARCHY_PATH, 'default', 'fonts', 'omarchy', 'omarchy.ttf'), path.join(HOME, '.local', 'share', 'fonts', 'omarchy.ttf')]) {
+    if (fs.existsSync(f)) return f;
+  }
+  return null;
+}
+
+async function homeData() {
+  const ws = await workspaces();
+  return {
+    bar: await barData(ws),
     user: os.userInfo().username,
     host: os.hostname(),
     cpu: cpuPercent(),
@@ -354,7 +514,7 @@ async function homeData() {
     disk: disk(),
     battery: battery(),
     uptime: os.uptime(),
-    workspaces: await workspaces(),
+    workspaces: ws,
   };
 }
 
@@ -425,7 +585,7 @@ setInterval(() => { for (const s of streams) s.res.write(': ping\n\n'); }, 20000
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
   '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.webp': 'image/webp', '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.mp4': 'video/mp4', '.webm': 'video/webm', '.mov': 'video/quicktime',
-  '.mkv': 'video/x-matroska', '.webmanifest': 'application/manifest+json' };
+  '.mkv': 'video/x-matroska', '.webmanifest': 'application/manifest+json', '.ttf': 'font/ttf', '.otf': 'font/otf', '.woff2': 'font/woff2' };
 
 function send(res, code, body, type = 'text/plain; charset=utf-8', extra = {}) {
   res.writeHead(code, { 'Content-Type': type, 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer',
@@ -565,6 +725,10 @@ const server = http.createServer((req, res) => {
     return phoneWallpaper(bg).then((file) => sendRange(req, res, file));
   }
   if (p === '/api/home') return homeData().then((d) => json(res, d));
+  if (p === '/api/font/omarchy') {
+    const f = omarchyFontPath();
+    return f ? sendFile(res, f, { 'Cache-Control': 'private, max-age=604800' }) : send(res, 404, 'none');
+  }
   if (p === '/api/workspace' && req.method === 'POST') {
     if (!sameOrigin(req)) return send(res, 403, 'forbidden');
     return readBody(req, (b) => {
