@@ -385,8 +385,11 @@ dialog#sheet::backdrop { background: rgba(0, 0, 0, .45); }
 /* ===================== Screen: your computer, made for touch ===================== */
 .sc-root[hidden] { display: none !important; }
 html.screen, html.screen body { background: #000; }
+/* Sized to the visible area, so when the phone keyboard opens the whole
+   screen view (picture and key bar) moves up above it instead of under it. */
 .sc-root {
-  position: fixed; inset: 0; z-index: 5; display: flex; flex-direction: column;
+  position: fixed; left: 0; right: 0; top: var(--tw-vv-top); height: var(--tw-vvh);
+  z-index: 5; display: flex; flex-direction: column;
   background: #000; color: var(--fg); font-family: var(--mono);
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
 }
@@ -429,3 +432,6 @@ html.screen, html.screen body { background: #000; }
   .sc-btn { min-height: 30px; padding: 4px 8px; }
   .sc-key { height: 34px; }
 }
+
+/* Keyboard up: it already covers the home-indicator area, so drop that padding. */
+html.kbd .sc-root { padding-bottom: 0; }

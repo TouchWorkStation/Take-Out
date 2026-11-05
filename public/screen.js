@@ -218,7 +218,7 @@ function layout() {
   surface.style.left = `${view.x}px`;
   surface.style.top = `${view.y}px`;
   const zb = $('#scZoom');
-  zb.textContent = view.z > 1.05 ? `${view.z.toFixed(view.z < 2 ? 1 : 0)}×` : 'zoom';
+  zb.textContent = view.z > 1.05 ? `${Math.round(view.z * 10) / 10}×` : 'zoom';
   zb.classList.toggle('on', view.z > 1.05);
 }
 function zoomAt(z, cx, cy) {
@@ -229,7 +229,22 @@ function zoomAt(z, cx, cy) {
   view.z = z;
   layout();
 }
-new ResizeObserver(layout).observe(stage);
+// Where you last tapped, as a fraction of the desktop, so that when the
+// keyboard pushes the view up while zoomed, the box you're typing into stays in sight.
+let lastTap = null;
+function keepTapVisible() {
+  const c = canvas();
+  if (!lastTap || !c || view.z <= 1.05) return;
+  const sr = stage.getBoundingClientRect();
+  const cr = c.getBoundingClientRect();
+  const px = cr.left + cr.width * lastTap.fx - sr.left;   // where that spot sits in the stage now
+  const py = cr.top + cr.height * lastTap.fy - sr.top;
+  const pad = 40;
+  if (px < pad || px > sr.width - pad) view.x += sr.width / 2 - px;
+  if (py < pad || py > sr.height - pad) view.y += sr.height / 2 - py;
+  layout();
+}
+new ResizeObserver(() => { layout(); keepTapVisible(); }).observe(stage);
 layout();
 
 // ---------- touch → precise mouse on the computer ----------
@@ -259,7 +274,14 @@ function releaseGrab() {
   const el = captureLayer();
   if (el) el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
 }
+function rememberTap(cx, cy) {
+  const c = canvas();
+  if (!c) return;
+  const r = c.getBoundingClientRect();
+  lastTap = { fx: Math.max(0, Math.min(1, (cx - r.left) / r.width)), fy: Math.max(0, Math.min(1, (cy - r.top) / r.height)) };
+}
 function click(cx, cy, right = false) {
+  rememberTap(cx, cy);
   mouse('mousemove', cx, cy);
   mouse('mousedown', cx, cy, right ? 2 : 1, right ? 2 : 0);
   mouse('mouseup', cx, cy, 0, right ? 2 : 0);

@@ -146,6 +146,9 @@
     const vv = window.visualViewport;
     document.documentElement.style.setProperty('--tw-vvh', `${vv ? vv.height : window.innerHeight}px`);
     document.documentElement.style.setProperty('--tw-vv-top', `${vv ? vv.offsetTop : 0}px`);
+    // The keyboard is up when the visible area is much shorter than the window.
+    const kbdUp = !!vv && window.innerHeight - vv.height > 120;
+    document.documentElement.classList.toggle('kbd', kbdUp);
     autoScroll = true;
     $('#jump').hidden = true;
     requestAnimationFrame(() => { pane.scrollTop = pane.scrollHeight; measure(); });
